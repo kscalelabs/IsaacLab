@@ -38,7 +38,10 @@ class StompyRewards(RewardsCfg):
         weight=0.25,
         params={
             "command_name": "base_velocity",
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*ankle_link"),
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names="*_foot_1_rmd_x4_24_mock_1_outer_rmd_x4_24_1",
+            ),
             "threshold": 0.4,
         },
     )
@@ -46,33 +49,34 @@ class StompyRewards(RewardsCfg):
         func=mdp.feet_slide,
         weight=-0.25,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*ankle_link"),
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*ankle_link"),
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names="*_foot_1_rmd_x4_24_mock_1_outer_rmd_x4_24_1",
+            ),
+            "asset_cfg": SceneEntityCfg(
+                "robot", body_names="*_foot_1_rmd_x4_24_mock_1_outer_rmd_x4_24_1"
+            ),
         },
     )
     # Penalize ankle joint limits
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*_ankle")},
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*ankle")},
     )
     # Penalize deviation from default of the joints that are not essential for locomotion
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.2,
         params={
-            "asset_cfg": SceneEntityCfg(
-                "robot", joint_names=[".*_hip_yaw", ".*_hip_roll"]
-            )
+            "asset_cfg": SceneEntityCfg("robot", joint_names=["*hip yaw", "*hip roll"])
         },
     )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.2,
         params={
-            "asset_cfg": SceneEntityCfg(
-                "robot", joint_names=[".*_shoulder_.*", ".*_elbow"]
-            )
+            "asset_cfg": SceneEntityCfg("robot", joint_names=["*shoulder*", "*elbow"])
         },
     )
     joint_deviation_torso = RewTerm(
@@ -90,7 +94,9 @@ class TerminationsCfg:
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*torso_link"),
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces", body_names="*bottom_skeleton_1"
+            ),
             "threshold": 1.0,
         },
     )
