@@ -12,11 +12,10 @@ sudo ./isaaclab.sh -p source/standalone/workflows/rsl_rl/train.py --task Isaac-V
 
 # Eval
 ```
-./isaac_lab.sh -p source/standalone/workflows/rsl_rl/play.py --task Isaac-Velocity-Rough-H1-v0 
-./isaac_lab.sh -p source/standalone/workflows/rsl_rl/play.py --task Isaac-Velocity-Rough-Stompy-v0
+sudo ./isaaclab.sh -p source/standalone/workflows/rsl_rl/play.py --task Isaac-Velocity-Rough-H1-v0
+sudo ./isaac_lab.sh -p source/standalone/workflows/rsl_rl/play.py --task Isaac-Velocity-Rough-Stompy-v0
 ```
 
 # Random
 Multinode training:
 https://isaac-sim.github.io/IsaacLab/source/features/multi_gpu.html
-
