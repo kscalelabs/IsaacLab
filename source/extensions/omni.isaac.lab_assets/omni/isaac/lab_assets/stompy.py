@@ -12,7 +12,7 @@ from omni.isaac.lab.assets.articulation import ArticulationCfg
 STOMPY_CFG = ArticulationCfg(
     # Spawn stompy from URDF
     spawn=sim_utils.UsdFileCfg(
-        usd_path="/home/dpsh/isaacs_sim/sim/sim/stompy/robot_fixed/robot_fixed.usd",
+        usd_path="/home/dpsh/KIsaacLab/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/velocity/config/stompy/stompy/robot_fixed/robot_fixed.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
