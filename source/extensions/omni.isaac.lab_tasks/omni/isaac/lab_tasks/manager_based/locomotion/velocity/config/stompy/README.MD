@@ -1,6 +1,15 @@
 # Tips
 To run with root: `export OMNI_KIT_ALLOW_ROOT=1`
 
+# Creating .usd
+```
+1. Open Isaac Sim in NVIDIA Omniverse
+2. Create a new scene
+3. Install URDF Importer, or enable it if it's already installed
+4. Import the URDF file, making sure that an output directory is set
+5. .usd file will be saved in the same directory as the URDF
+```
+
 
 # Training
 ```
