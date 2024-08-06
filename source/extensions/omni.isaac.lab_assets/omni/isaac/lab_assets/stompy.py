@@ -34,23 +34,23 @@ STOMPY_CFG = ArticulationCfg(
         joint_pos={
             "torso_roll": -0.502,
             # left arm
-            "left_shoulder_pitch": -0.251,  # Corrected from -0.502
-            "left_shoulder_yaw": 1.820,  # Corrected from 1.26
-            "left_shoulder_roll": -1.445,  # Corrected from -3.01
-            "left_elbow_pitch": 2.065,  # Corrected from 4.46
-            "left_wrist_roll": -2.510,  # Corrected from -1.57
-            "left_wrist_pitch": 3.325,  # Corrected from 0
-            "left_wrist_yaw": 0.0628,  # No correction needed
+            "left_shoulder_pitch": -0.251,
+            "left_shoulder_yaw": 1.820,
+            "left_shoulder_roll": -1.445,
+            "left_elbow_pitch": 2.065,
+            "left_wrist_roll": -2.510,
+            "left_wrist_pitch": 3.325,
+            "left_wrist_yaw": 0.0628,
             # right arm
-            "right_shoulder_pitch": 2.700,  # Corrected from 2.95
-            "right_shoulder_yaw": -1.820,  # Corrected from -1.26
-            "right_shoulder_roll": -2.575,  # Corrected from -0.126
-            "right_elbow_pitch": -2.575,  # Corrected from 1.13
-            "right_wrist_roll": -0.005,  # Corrected from -1.76
-            "right_wrist_pitch": 0.251,  # Corrected from 2.95
-            "right_wrist_yaw": 1.375,  # Corrected from 0.251
+            "right_shoulder_pitch": 2.700,
+            "right_shoulder_yaw": -1.820,
+            "right_shoulder_roll": -2.575,
+            "right_elbow_pitch": -2.575,
+            "right_wrist_roll": -0.005,
+            "right_wrist_pitch": 0.251,
+            "right_wrist_yaw": 1.375,
             # legs
-            "right_hip_pitch": 1.130,  # Corrected from -0.988
+            "right_hip_pitch": 1.130,
             "right_hip_yaw": 1.07,
             "right_hip_roll": 0,
             "right_knee_pitch": 0.879,
