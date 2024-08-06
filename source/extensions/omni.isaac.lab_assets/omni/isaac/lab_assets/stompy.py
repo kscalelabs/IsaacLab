@@ -120,5 +120,17 @@ STOMPY_CFG = ArticulationCfg(
                 ".*elbow.*": 0.01,
             },
         ),
+        "wrists": ImplicitActuatorCfg(
+            joint_names_expr=[
+                ".*wrist_roll",
+                ".*wrist_pitch",
+                ".*wrist_yaw",
+            ],
+            effort_limit=20,
+            velocity_limit=100.0,
+            stiffness=20.0,
+            damping=2.0,
+            armature=0.01,
+        ),
     },
 )
