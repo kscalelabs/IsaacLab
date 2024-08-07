@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, The Isaac Lab Project Developers.
+# Copyright (c) 2024 KScale Labs.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
