@@ -43,5 +43,6 @@ from .ridgeback_franka import *
 from .sawyer import *
 from .shadow_hand import *
 from .stompy import *
+from .stompy_mini import *
 from .unitree import *
 from .universal_robots import *
