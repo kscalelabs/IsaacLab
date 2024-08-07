@@ -16,11 +16,11 @@ from omni.isaac.lab_tasks.manager_based.locomotion.velocity.velocity_env_cfg imp
 ##
 # Pre-defined configs
 ##
-from omni.isaac.lab_assets import STOMPY_CFG  # isort: skip
+from omni.isaac.lab_assets import STOMPYMINI_CFG  # isort: skip
 
 
 @configclass
-class StompyRewards(RewardsCfg):
+class StompyMiniRewards(RewardsCfg):
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
     lin_vel_z_l2 = None
     track_lin_vel_xy_exp = RewTerm(
@@ -40,7 +40,7 @@ class StompyRewards(RewardsCfg):
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=".*_foot_1_rmd_x4_24_mock_1_outer_rmd_x4_24_1",
+                body_names=".*_leg_1_foot_pad_1",
             ),
             "threshold": 0.4,
         },
@@ -51,11 +51,9 @@ class StompyRewards(RewardsCfg):
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=".*_foot_1_rmd_x4_24_mock_1_outer_rmd_x4_24_1",
+                body_names=".*_leg_1_foot_pad_1",
             ),
-            "asset_cfg": SceneEntityCfg(
-                "robot", body_names=".*_foot_1_rmd_x4_24_mock_1_outer_rmd_x4_24_1"
-            ),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_leg_1_foot_pad_1"),
         },
     )
     # Penalize ankle joint limits
@@ -83,11 +81,6 @@ class StompyRewards(RewardsCfg):
             )
         },
     )
-    joint_deviation_torso = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names="torso_roll")},
-    )
 
 
 @configclass
@@ -99,27 +92,28 @@ class TerminationsCfg:
         func=mdp.illegal_contact,
         params={
             "sensor_cfg": SceneEntityCfg(
-                "contact_forces", body_names="*.bottom_skeleton_1.*"
+                "contact_forces",
+                body_names="*.link_upper_half_assembly_1_front_plate_bottom_section_1.*",
             ),
             "threshold": 1.0,
         },
     )
     torso_height = DoneTerm(
-        func=mdp.root_height_below_minimum, params={"minimum_height": 0.9}
+        func=mdp.root_height_below_minimum, params={"minimum_height": 0.6}
     )
 
 
 @configclass
-class StompyRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-    rewards: StompyRewards = StompyRewards()
+class StompyMiniRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+    rewards: StompyMiniRewards = StompyMiniRewards()
     terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
         # Scene
-        self.scene.robot = STOMPY_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/link_upper_limb_assembly_7_dof_1_torso_1_bottom_skeleton_1"
+        self.scene.robot = STOMPYMINI_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/link_upper_half_assembly_1_front_plate_bottom_section_1"
 
         # Randomization
         # TODO: LOOK FOR HYPERPARAMETERS
@@ -127,7 +121,7 @@ class StompyRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.add_base_mass = None
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.base_external_force_torque.params["asset_cfg"].body_names = [
-            ".*link_upper_limb_assembly_7_dof_1_torso_1_bottom_skeleton_1"
+            ".*link_upper_half_assembly_1_front_plate_bottom_section_1"
         ]
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
@@ -143,7 +137,7 @@ class StompyRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = [
-            ".*link_upper_limb_assembly_7_dof_1_torso_1_bottom_skeleton_1"
+            ".*link_upper_half_assembly_1_front_plate_bottom_section_1"
         ]
 
         # Rewards
@@ -160,7 +154,7 @@ class StompyRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
 
 @configclass
-class StompyRoughEnvCfg_PLAY(StompyRoughEnvCfg):
+class StompyMiniRoughEnvCfg_PLAY(StompyMiniRoughEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()

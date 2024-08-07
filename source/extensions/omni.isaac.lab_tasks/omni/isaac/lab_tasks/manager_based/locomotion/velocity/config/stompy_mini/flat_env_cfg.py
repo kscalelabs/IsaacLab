@@ -5,11 +5,11 @@
 
 from omni.isaac.lab.utils import configclass
 
-from .rough_env_cfg import StompyRoughEnvCfg
+from .rough_env_cfg import StompyMiniRoughEnvCfg
 
 
 @configclass
-class StompyFlatEnvCfg(StompyRoughEnvCfg):
+class StompyMiniFlatEnvCfg(StompyMiniRoughEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
@@ -26,7 +26,7 @@ class StompyFlatEnvCfg(StompyRoughEnvCfg):
         self.rewards.feet_air_time.params["threshold"] = 0.6
 
 
-class StompyFlatEnvCfg_PLAY(StompyFlatEnvCfg):
+class StompyMiniFlatEnvCfg_PLAY(StompyMiniFlatEnvCfg):
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()

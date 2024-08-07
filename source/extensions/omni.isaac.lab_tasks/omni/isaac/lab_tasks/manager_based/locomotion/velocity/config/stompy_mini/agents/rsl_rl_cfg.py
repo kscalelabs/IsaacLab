@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from omni.isaac.lab.utils import configclass
-
 from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
     RslRlOnPolicyRunnerCfg,
     RslRlPpoActorCriticCfg,
@@ -13,11 +12,11 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
 
 
 @configclass
-class StompyRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+class StompyMiniRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 3000
     save_interval = 50
-    experiment_name = "Stompy_rough"
+    experiment_name = "StompyMini_rough"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
@@ -42,11 +41,11 @@ class StompyRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 
 
 @configclass
-class StompyFlatPPORunnerCfg(StompyRoughPPORunnerCfg):
+class StompyMiniFlatPPORunnerCfg(StompyMiniRoughPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
 
         self.max_iterations = 1000
-        self.experiment_name = "Stompy_flat"
+        self.experiment_name = "StompyMini_flat"
         self.policy.actor_hidden_dims = [128, 128, 128]
         self.policy.critic_hidden_dims = [128, 128, 128]
