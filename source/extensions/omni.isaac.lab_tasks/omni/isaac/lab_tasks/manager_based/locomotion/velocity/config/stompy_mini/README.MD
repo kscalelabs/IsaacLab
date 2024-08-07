@@ -17,12 +17,19 @@ conda activate isaaclab
 sudo ./isaaclab.sh -p source/standalone/workflows/rsl_rl/train.py --task Isaac-Velocity-Rough-H1-v0 --num_envs 4096 --headless --video --enable_cameras
 
 sudo ./isaaclab.sh -p source/standalone/workflows/rsl_rl/train.py --task Isaac-Velocity-Rough-Stompy-v0 --num_envs 4096 --headless --video --enable_cameras
+
+sudo ./isaaclab.sh -p source/standalone/workflows/rsl_rl/train.py --task Isaac-Velocity-Flat-StompyMini-v0 --num_envs 4096 --headless --video --enable_cameras
+
+sudo ./isaaclab.sh -p source/standalone/workflows/rsl_rl/train.py --task Isaac-Velocity-Flat-StompyMini-v0 --num_envs 100
+
 ```
 
 # Eval
 ```
 sudo ./isaaclab.sh -p source/standalone/workflows/rsl_rl/play.py --task Isaac-Velocity-Rough-H1-v0
 sudo ./isaaclab.sh -p source/standalone/workflows/rsl_rl/play.py --task Isaac-Velocity-Flat-Stompy-v0 --num_envs=16
+
+sudo ./isaaclab.sh -p source/standalone/workflows/rsl_rl/play.py --task Isaac-Velocity-Flat-StompyMini-v0 --num_envs=16
 ```
 
 # Random

@@ -40,7 +40,7 @@ class StompyMiniRewards(RewardsCfg):
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=".*_leg_1_foot_pad_1",
+                body_names=".*leg_1_robstride_04_mock_2_rs_04_rotor_1",
             ),
             "threshold": 0.4,
         },
@@ -51,9 +51,11 @@ class StompyMiniRewards(RewardsCfg):
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=".*_leg_1_foot_pad_1",
+                body_names=".*leg_1_robstride_04_mock_2_rs_04_rotor_1",
             ),
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*_leg_1_foot_pad_1"),
+            "asset_cfg": SceneEntityCfg(
+                "robot", body_names=".*leg_1_robstride_04_mock_2_rs_04_rotor_1"
+            ),
         },
     )
     # Penalize ankle joint limits
@@ -93,7 +95,7 @@ class TerminationsCfg:
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names="*.link_upper_half_assembly_1_front_plate_bottom_section_1.*",
+                body_names="*.link_upper_half_assembly_1_torso_top_left_1.*",
             ),
             "threshold": 1.0,
         },
@@ -113,7 +115,9 @@ class StompyMiniRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         super().__post_init__()
         # Scene
         self.scene.robot = STOMPYMINI_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/link_upper_half_assembly_1_front_plate_bottom_section_1"
+        self.scene.height_scanner.prim_path = (
+            "{ENV_REGEX_NS}/Robot/link_upper_half_assembly_1_torso_top_left_1"
+        )
 
         # Randomization
         # TODO: LOOK FOR HYPERPARAMETERS
@@ -121,7 +125,7 @@ class StompyMiniRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.add_base_mass = None
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.base_external_force_torque.params["asset_cfg"].body_names = [
-            ".*link_upper_half_assembly_1_front_plate_bottom_section_1"
+            ".*link_upper_half_assembly_1_torso_top_left_1"
         ]
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "pitch": (-3.14, 3.14)},
@@ -137,7 +141,7 @@ class StompyMiniRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = [
-            ".*link_upper_half_assembly_1_front_plate_bottom_section_1"
+            ".*link_upper_half_assembly_1_torso_top_left_1"
         ]
 
         # Rewards
