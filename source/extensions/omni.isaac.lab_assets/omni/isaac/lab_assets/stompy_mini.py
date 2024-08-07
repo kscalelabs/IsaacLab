@@ -10,7 +10,6 @@ from omni.isaac.lab.actuators import ImplicitActuatorCfg
 from omni.isaac.lab.assets.articulation import ArticulationCfg
 
 STOMPYMINI_CFG = ArticulationCfg(
-    # Spawn stompy from URDF
     spawn=sim_utils.UsdFileCfg(
         usd_path="/home/dpsh/KIsaacLab/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/velocity/config/stompy_mini/robot_fixed.usd",
         activate_contact_sensors=True,
