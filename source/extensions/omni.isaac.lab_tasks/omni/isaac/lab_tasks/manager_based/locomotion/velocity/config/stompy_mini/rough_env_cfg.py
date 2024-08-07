@@ -124,7 +124,7 @@ class StompyMiniRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             ".*link_upper_half_assembly_1_front_plate_bottom_section_1"
         ]
         self.events.reset_base.params = {
-            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "pitch": (-3.14, 3.14)},
             "velocity_range": {
                 "x": (0.0, 0.0),
                 "y": (0.0, 0.0),

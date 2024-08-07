@@ -30,7 +30,8 @@ STOMPYMINI_CFG = ArticulationCfg(
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 1.25),
+        pos=(0.0, 0.0, 1.00),
+        rot=(0.7071, 0.7071, 0.0, 0.0),
         joint_pos={
             # left arm
             "left_shoulder_pitch": -1.02,
