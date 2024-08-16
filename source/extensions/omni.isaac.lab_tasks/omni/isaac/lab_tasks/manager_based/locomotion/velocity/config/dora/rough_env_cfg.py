@@ -16,11 +16,11 @@ from omni.isaac.lab_tasks.manager_based.locomotion.velocity.velocity_env_cfg imp
 ##
 # Pre-defined configs
 ##
-from omni.isaac.lab_assets import STOMPY_CFG  # isort: skip
+from omni.isaac.lab_assets import DORA_CFG  # isort: skip
 
 
 @configclass
-class StompyRewards(RewardsCfg):
+class DoraRewards(RewardsCfg):
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
     lin_vel_z_l2 = None
     track_lin_vel_xy_exp = RewTerm(
@@ -110,15 +110,15 @@ class TerminationsCfg:
 
 
 @configclass
-class StompyRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-    rewards: StompyRewards = StompyRewards()
+class DoraRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+    rewards: DoraRewards = DoraRewards()
     terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
         # Scene
-        self.scene.robot = STOMPY_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = DORA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/link_upper_limb_assembly_7_dof_1_torso_1_bottom_skeleton_1"
 
         # Randomization
@@ -160,7 +160,7 @@ class StompyRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
 
 @configclass
-class StompyRoughEnvCfg_PLAY(StompyRoughEnvCfg):
+class DoraRoughEnvCfg_PLAY(DoraRoughEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
