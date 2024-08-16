@@ -86,6 +86,9 @@ class TerminationsCfg:
             "threshold": 1.0,
         },
     )
+    torso_height = DoneTerm(
+        func=mdp.root_height_below_minimum, params={"minimum_height": 0.7}
+    )  # comment out for rough terrain
 
 
 @configclass
