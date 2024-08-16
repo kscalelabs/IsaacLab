@@ -40,7 +40,7 @@ class DoraRewards(RewardsCfg):
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=".*_foot_1_rmd_x4_24_mock_1_outer_rmd_x4_24_1",
+                body_names=".*ankle_roll_Link",
             ),
             "threshold": 0.4,
         },
@@ -51,11 +51,9 @@ class DoraRewards(RewardsCfg):
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=".*_foot_1_rmd_x4_24_mock_1_outer_rmd_x4_24_1",
+                body_names=".*ankle_roll_Link",
             ),
-            "asset_cfg": SceneEntityCfg(
-                "robot", body_names=".*_foot_1_rmd_x4_24_mock_1_outer_rmd_x4_24_1"
-            ),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*ankle_roll_Link"),
         },
     )
     # Penalize ankle joint limits
@@ -74,20 +72,6 @@ class DoraRewards(RewardsCfg):
             )
         },
     )
-    joint_deviation_arms = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.2,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot", joint_names=[".*shoulder.*", ".*elbow.*"]
-            )
-        },
-    )
-    joint_deviation_torso = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names="torso_roll")},
-    )
 
 
 @configclass
@@ -98,14 +82,9 @@ class TerminationsCfg:
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces", body_names="*.bottom_skeleton_1.*"
-            ),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="*.base_link.*"),
             "threshold": 1.0,
         },
-    )
-    torso_height = DoneTerm(
-        func=mdp.root_height_below_minimum, params={"minimum_height": 0.9}
     )
 
 
@@ -119,7 +98,7 @@ class DoraRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         super().__post_init__()
         # Scene
         self.scene.robot = DORA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/link_upper_limb_assembly_7_dof_1_torso_1_bottom_skeleton_1"
+        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base_link"
 
         # Randomization
         # TODO: LOOK FOR HYPERPARAMETERS
@@ -127,7 +106,7 @@ class DoraRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.add_base_mass = None
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.base_external_force_torque.params["asset_cfg"].body_names = [
-            ".*link_upper_limb_assembly_7_dof_1_torso_1_bottom_skeleton_1"
+            ".*base_link"
         ]
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
@@ -142,9 +121,7 @@ class DoraRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         }
 
         # Terminations
-        self.terminations.base_contact.params["sensor_cfg"].body_names = [
-            ".*link_upper_limb_assembly_7_dof_1_torso_1_bottom_skeleton_1"
-        ]
+        self.terminations.base_contact.params["sensor_cfg"].body_names = [".*base_link"]
 
         # Rewards
         self.rewards.undesired_contacts = None
