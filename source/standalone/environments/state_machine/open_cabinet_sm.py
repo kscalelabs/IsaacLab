@@ -23,7 +23,6 @@ from omni.isaac.lab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Pick and lift state machine for cabinet environments.")
-parser.add_argument("--cpu", action="store_true", default=False, help="Use CPU pipeline.")
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
@@ -41,10 +40,8 @@ simulation_app = app_launcher.app
 
 import gymnasium as gym
 import torch
-import traceback
 from collections.abc import Sequence
 
-import carb
 import warp as wp
 
 from omni.isaac.lab.sensors import FrameTransformer
@@ -265,7 +262,7 @@ def main():
     # parse configuration
     env_cfg: CabinetEnvCfg = parse_env_cfg(
         "Isaac-Open-Drawer-Franka-IK-Abs-v0",
-        use_gpu=not args_cli.cpu,
+        device=args_cli.device,
         num_envs=args_cli.num_envs,
         use_fabric=not args_cli.disable_fabric,
     )
@@ -314,13 +311,7 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        # run the main execution
-        main()
-    except Exception as err:
-        carb.log_error(err)
-        carb.log_error(traceback.format_exc())
-        raise
-    finally:
-        # close sim app
-        simulation_app.close()
+    # run the main execution
+    main()
+    # close sim app
+    simulation_app.close()

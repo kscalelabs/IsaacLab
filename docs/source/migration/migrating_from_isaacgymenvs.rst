@@ -45,9 +45,9 @@ Below is an example skeleton of a task config class:
       # env
       decimation = 2
       episode_length_s = 5.0
-      num_actions = 1
-      num_observations = 4
-      num_states = 0
+      action_space = 1
+      observation_space = 4
+      state_space = 0
       # task-specific parameters
       ...
 
@@ -83,15 +83,16 @@ setting the GPU buffer dimensions.
 |                                                              |                                                                   |
 |  # IsaacGymEnvs                                              | # IsaacLab                                                        |
 |  sim:                                                        | sim: SimulationCfg = SimulationCfg(                               |
+|                                                              |    device = "cuda:0" # can be "cpu", "cuda", "cuda:<device_id>"   |
 |    dt: 0.0166 # 1/60 s                                       |    dt=1 / 120,                                                    |
 |    substeps: 2                                               |    # decimation will be set in the task config                    |
 |    up_axis: "z"                                              |    # up axis will always be Z in isaac sim                        |
-|    use_gpu_pipeline: ${eq:${...pipeline},"gpu"}              |    use_gpu_pipeline=True,                                         |
+|    use_gpu_pipeline: ${eq:${...pipeline},"gpu"}              |    # use_gpu_pipeline is deduced from the device                  |
 |    gravity: [0.0, 0.0, -9.81]                                |    gravity=(0.0, 0.0, -9.81),                                     |
 |    physx:                                                    |    physx: PhysxCfg = PhysxCfg(                                    |
 |      num_threads: ${....num_threads}                         |        # num_threads is no longer needed                          |
 |      solver_type: ${....solver_type}                         |        solver_type=1,                                             |
-|      use_gpu: ${contains:"cuda",${....sim_device}}           |        use_gpu=True,                                              |
+|      use_gpu: ${contains:"cuda",${....sim_device}}           |        # use_gpu is deduced from the device                       |
 |      num_position_iterations: 4                              |        max_position_iteration_count=4,                            |
 |      num_velocity_iterations: 0                              |        max_velocity_iteration_count=0,                            |
 |      contact_offset: 0.02                                    |        # moved to actor config                                    |
@@ -134,9 +135,9 @@ The following parameters must be set for each environment config:
 
    decimation = 2
    episode_length_s = 5.0
-   num_actions = 1
-   num_observations = 4
-   num_states = 0
+   action_space = 1
+   observation_space = 4
+   state_space = 0
 
 Note that the maximum episode length parameter (now ``episode_length_s``) is in seconds instead of steps as it was
 in IsaacGymEnvs. To convert between step count to seconds, use the equation:
@@ -195,7 +196,7 @@ adding any other optional objects into the scene, such as lights.
 |     self.sim = super().create_sim(self.device_id, self.graphics_device_id,   |     # clone, filter, and replicate                                     |
 |                                     self.physics_engine, self.sim_params)    |     self.scene.clone_environments(copy_from_source=False)              |
 |     self._create_ground_plane()                                              |     self.scene.filter_collisions(global_prim_paths=[])                 |
-|     self._create_envs(self.num_envs, self.cfg["env"]['envSpacing'],          |     # add articultion to scene                                         |
+|     self._create_envs(self.num_envs, self.cfg["env"]['envSpacing'],          |     # add articulation to scene                                        |
 |                         int(np.sqrt(self.num_envs)))                         |     self.scene.articulations["cartpole"] = self.cartpole               |
 |                                                                              |     # add lights                                                       |
 |                                                                              |     light_cfg = sim_utils.DomeLightCfg(intensity=2000.0)               |
@@ -568,9 +569,9 @@ Task Config
 |                                                        |     decimation = 2                                                  |
 |   asset:                                               |     episode_length_s = 5.0                                          |
 |     assetRoot: "../../assets"                          |     action_scale = 100.0  # [N]                                     |
-|     assetFileName: "urdf/cartpole.urdf"                |     num_actions = 1                                                 |
-|                                                        |     num_observations = 4                                            |
-|   enableCameraSensors: False                           |     num_states = 0                                                  |
+|     assetFileName: "urdf/cartpole.urdf"                |     action_space = 1                                                |
+|                                                        |     observation_space = 4                                           |
+|   enableCameraSensors: False                           |     state_space = 0                                                 |
 |                                                        |     # reset                                                         |
 | sim:                                                   |     max_cart_pos = 3.0                                              |
 |   dt: 0.0166 # 1/60 s                                  |     initial_pole_angle_range = [-0.25, 0.25]                        |
@@ -659,7 +660,7 @@ the need to set simulation parameters for actors in the task implementation.
 |     self._create_ground_plane()                                        |         copy_from_source=False)                                     |
 |     self._create_envs(self.num_envs,                                   |     self.scene.filter_collisions(                                   |
 |         self.cfg["env"]['envSpacing'],                                 |         global_prim_paths=[])                                       |
-|         int(np.sqrt(self.num_envs)))                                   |     # add articultion to scene                                      |
+|         int(np.sqrt(self.num_envs)))                                   |     # add articulation to scene                                     |
 |                                                                        |     self.scene.articulations["cartpole"] = self.cartpole            |
 | def _create_ground_plane(self):                                        |     # add lights                                                    |
 |     plane_params = gymapi.PlaneParams()                                |     light_cfg = sim_utils.DomeLightCfg(                             |

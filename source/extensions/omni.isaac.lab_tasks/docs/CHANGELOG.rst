@@ -1,6 +1,193 @@
 Changelog
 ---------
 
+0.10.13 (2024-10-30)
+~~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Defined the Gymnasium task entry points with configuration strings instead of class types.
+  This avoids unnecessary imports and improves the load types.
+* Blacklisted ``mdp`` directories during the recursive module search.
+
+
+0.10.12 (2024-10-28)
+~~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Changed manager-based vision cartpole environment names from Isaac-Cartpole-RGB-Camera-v0
+  and Isaac-Cartpole-Depth-Camera-v0 to Isaac-Cartpole-RGB-v0 and Isaac-Cartpole-Depth-v0
+
+
+0.10.11 (2024-10-28)
+~~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added feature extracted observation cartpole examples.
+
+0.10.10 (2024-10-25)
+~~~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Fixed issues with defining Gymnasium spaces in Direct workflows due to Hydra/OmegaConf limitations with non-primitive types.
+
+
+0.10.9 (2024-10-22)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Sets curriculum and commands to None in manager-based environment configurations when not needed.
+  Earlier, this was done by making an empty configuration object, which is now unnecessary.
+
+
+0.10.8 (2024-10-22)
+~~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Fixed the wrong selection of body id's in the :meth:`omni.isaac.lab_tasks.manager_based.locomotion.velocity.mdp.rewards.feet_slide`
+  reward function. This makes sure the right IDs are selected for the bodies.
+
+
+0.10.7 (2024-10-02)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Replace deprecated :attr:`num_observations`, :attr:`num_actions` and :attr:`num_states` in single-agent direct tasks
+  by :attr:`observation_space`, :attr:`action_space` and :attr:`state_space` respectively.
+* Replace deprecated :attr:`num_observations`, :attr:`num_actions` and :attr:`num_states` in multi-agent direct tasks
+  by :attr:`observation_spaces`, :attr:`action_spaces` and :attr:`state_space` respectively.
+
+
+0.10.6 (2024-09-25)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added ``Isaac-Cartpole-RGB-Camera-v0`` and ``Isaac-Cartpole-Depth-Camera-v0``
+  manager based camera cartpole environments.
+
+
+0.10.5 (2024-09-11)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Updated the skrl RL library integration to the latest release (skrl-v1.3.0)
+
+
+0.10.4 (2024-09-10)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added ``Isaac-Repose-Cube-Shadow-Vision-Direct-v0`` environment with heterogeneous proprioception and vision observations.
+
+
+0.10.3 (2024-09-05)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added environment config flag ``rerender_on_reset`` to allow updating sensor data after a reset.
+
+
+0.10.2 (2024-08-23)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added ``Isaac-Shadow-Hand-Over-Direct-v0`` multi-agent environment
+
+
+0.10.1 (2024-08-21)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added ``Isaac-Cart-Double-Pendulum-Direct-v0`` multi-agent environment
+
+Changed
+^^^^^^^
+
+* Update skrl wrapper to support multi-agent environments.
+
+
+0.10.0 (2024-08-14)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added support for the Hydra configuration system to all the train scripts. As a result, parameters of the environment
+  and the agent can be modified using command line arguments, for example ``env.actions.joint_effort.scale=10``.
+
+
+0.9.0 (2024-08-05)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Replaced the command line input ``--cpu`` with ``--device`` in the train and play scripts. Running on cpu is
+  supported by passing ``--device cpu``. Running on a specific gpu is now supported by passing ``--device cuda:<device_id>``,
+  where ``<device_id>`` is the id of the GPU to use, for example ``--device cuda:0``.
+
+
+0.8.2 (2024-08-02)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added ``Isaac-Repose-Cube-Allegro-Direct-v0`` environment
+
+Changed
+^^^^^^^
+
+* Renamed ``Isaac-Shadow-Hand-Direct-v0`` environments to ``Isaac-Repose-Cube-Shadow-Direct-v0``.
+* Renamed ``Isaac-Shadow-Hand-OpenAI-FF-Direct-v0`` environments to ``Isaac-Repose-Cube-Shadow-OpenAI-FF-Direct-v0``.
+* Renamed ``Isaac-Shadow-Hand-OpenAI-LSTM-Direct-v0`` environments to ``Isaac-Repose-Cube-Shadow-OpenAI-LSTM-Direct-v0``.
+
+
+0.8.1 (2024-08-02)
+~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Renamed the folder names for Unitree robots in the manager-based locomotion tasks. Earlier, there was an inconsistency
+  in the folder names as some had ``unitree_`` prefix and some didn't. Now, none of the folders have the prefix.
+
+
+0.8.0 (2024-07-26)
+~~~~~~~~~~~~~~~~~~
+
+Removed
+^^^^^^^
+
+* Renamed the action term names inside the manager-based lift-manipulation task. Earlier, they were called
+  ``body_joint_pos`` and ``gripper_joint_pos``. Now, they are called ``arm_action`` and ``gripper_action``.
+
+
 0.7.10 (2024-07-02)
 ~~~~~~~~~~~~~~~~~~~
 
@@ -334,7 +521,7 @@ Added
 * Added a new flag ``viewport`` to the :class:`IsaacEnv` class to enable/disable rendering of the viewport.
   If the flag is set to ``True``, the viewport is enabled and the environment is rendered in the background.
 * Updated the training scripts in the ``source/standalone/workflows`` directory to use the new flag ``viewport``.
-  If the CLI argument ``--video`` is passed, videos are recorded in the ``videos`` directory using the
+  If the CLI argument ``--video`` is passed, videos are recorded in the ``videos/train`` directory using the
   :class:`gym.wrappers.RecordVideo` wrapper.
 
 Changed

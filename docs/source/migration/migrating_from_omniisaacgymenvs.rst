@@ -46,9 +46,9 @@ Below is an example skeleton of a task config class:
       # env
       decimation = 2
       episode_length_s = 5.0
-      num_actions = 1
-      num_observations = 4
-      num_states = 0
+      action_space = 1
+      observation_space = 4
+      state_space = 0
       # task-specific parameters
       ...
 
@@ -76,8 +76,9 @@ for setting the GPU buffer dimensions.
 |                                                              |                                                                   |
 |  # OmniIsaacGymEnvs                                          | # IsaacLab                                                        |
 |  sim:                                                        | sim: SimulationCfg = SimulationCfg(                               |
+|                                                              |    device = "cuda:0" # can be "cpu", "cuda", "cuda:<device_id>"   |
 |    dt: 0.0083 # 1/120 s                                      |    dt=1 / 120,                                                    |
-|    use_gpu_pipeline: ${eq:${...pipeline},"gpu"}              |    use_gpu_pipeline=True,                                         |
+|    use_gpu_pipeline: ${eq:${...pipeline},"gpu"}              |    # use_gpu_pipeline is deduced from the device                  |
 |    use_fabric: True                                          |    use_fabric=True,                                               |
 |    enable_scene_query_support: False                         |    enable_scene_query_support=False,                              |
 |    disable_contact_processing: False                         |    disable_contact_processing=False,                              |
@@ -91,7 +92,7 @@ for setting the GPU buffer dimensions.
 |    physx:                                                    |    physx: PhysxCfg = PhysxCfg(                                    |
 |      worker_thread_count: ${....num_threads}                 |        # worker_thread_count is no longer needed                  |
 |      solver_type: ${....solver_type}                         |        solver_type=1,                                             |
-|      use_gpu: ${contains:"cuda",${....sim_device}}           |        use_gpu=True,                                              |
+|      use_gpu: ${contains:"cuda",${....sim_device}}           |        # use_gpu is deduced from the device                       |
 |      solver_position_iteration_count: 4                      |        max_position_iteration_count=4,                            |
 |      solver_velocity_iteration_count: 0                      |        max_velocity_iteration_count=0,                            |
 |      contact_offset: 0.02                                    |        # moved to actor config                                    |
@@ -157,9 +158,9 @@ The following parameters must be set for each environment config:
 
    decimation = 2
    episode_length_s = 5.0
-   num_actions = 1
-   num_observations = 4
-   num_states = 0
+   action_space = 1
+   observation_space = 4
+   state_space = 0
 
 
 RL Config Setup
@@ -218,7 +219,7 @@ will automatically be created for the actor. This avoids the need to separately 
 |     self._cartpoles = ArticulationView(                                      |     # clone, filter, and replicate                                     |
 |                  prim_paths_expr="/World/envs/.*/Cartpole",                  |     self.scene.clone_environments(copy_from_source=False)              |
 |                  name="cartpole_view", reset_xform_properties=False          |     self.scene.filter_collisions(global_prim_paths=[])                 |
-|     )                                                                        |     # add articultion to scene                                         |
+|     )                                                                        |     # add articulation to scene                                        |
 |     scene.add(self._cartpoles)                                               |     self.scene.articulations["cartpole"] = self.cartpole               |
 |                                                                              |     # add lights                                                       |
 |                                                                              |     light_cfg = sim_utils.DomeLightCfg(intensity=2000.0)               |
@@ -500,9 +501,9 @@ Task config in Isaac Lab can be split into the main task configuration class and
 |   clipObservations: 5.0                                         |     decimation = 2                                              |
 |   clipActions: 1.0                                              |     episode_length_s = 5.0                                      |
 |   controlFrequencyInv: 2 # 60 Hz                                |     action_scale = 100.0  # [N]                                 |
-|                                                                 |     num_actions = 1                                             |
-| sim:                                                            |     num_observations = 4                                        |
-|                                                                 |     num_states = 0                                              |
+|                                                                 |     action_space = 1                                            |
+| sim:                                                            |     observation_space = 4                                       |
+|                                                                 |     state_space = 0                                             |
 |   dt: 0.0083 # 1/120 s                                          |     # reset                                                     |
 |   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}                  |     max_cart_pos = 3.0                                          |
 |   gravity: [0.0, 0.0, -9.81]                                    |     initial_pole_angle_range = [-0.25, 0.25]                    |
@@ -637,7 +638,7 @@ Adding actors to the scene has been replaced by ``self.scene.articulations["cart
 |         reset_xform_properties=False                      |         copy_from_source=False)                          |
 |     )                                                     |     self.scene.filter_collisions(                        |
 |     scene.add(self._cartpoles)                            |         global_prim_paths=[])                            |
-|     return                                                |     # add articultion to scene                           |
+|     return                                                |     # add articulation to scene                          |
 |                                                           |     self.scene.articulations["cartpole"] = self.cartpole |
 | def get_cartpole(self):                                   |                                                          |
 |     cartpole = Cartpole(                                  |     # add lights                                         |

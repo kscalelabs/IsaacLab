@@ -1,3 +1,5 @@
+.. _tutorial-register-rl-env-gym:
+
 Registering an Environment
 ==========================
 
@@ -53,7 +55,8 @@ are running simultaneously in the same process, and all the data is returned in 
 fashion.
 
 Similarly, the :class:`envs.DirectRLEnv` class also inherits from the :class:`gymnasium.Env` class
-for the direct workflow.
+for the direct workflow. For :class:`envs.DirectMARLEnv`, although it does not inherit
+from Gymnasium, it can be registered and created in the same way.
 
 Using the gym registry
 ----------------------
@@ -152,11 +155,18 @@ Now that we have gone through the code, let's run the script and see the result:
 This should open a stage with everything similar to the :ref:`tutorial-create-manager-rl-env` tutorial.
 To stop the simulation, you can either close the window, or press ``Ctrl+C`` in the terminal.
 
-In addition, you can also change the simulation device from GPU to CPU by adding the ``--cpu`` flag:
+
+.. figure:: ../../_static/tutorials/tutorial_register_environment.jpg
+    :align: center
+    :figwidth: 100%
+    :alt: result of random_agent.py
+
+
+In addition, you can also change the simulation device from GPU to CPU by setting the value of the ``--device`` flag explicitly:
 
 .. code-block:: bash
 
-   ./isaaclab.sh -p source/standalone/environments/random_agent.py --task Isaac-Cartpole-v0 --num_envs 32 --cpu
+   ./isaaclab.sh -p source/standalone/environments/random_agent.py --task Isaac-Cartpole-v0 --num_envs 32 --device cpu
 
-With the ``--cpu`` flag, the simulation will run on the CPU. This is useful for debugging the simulation.
+With the ``--device cpu`` flag, the simulation will run on the CPU. This is useful for debugging the simulation.
 However, the simulation will run much slower than on the GPU.

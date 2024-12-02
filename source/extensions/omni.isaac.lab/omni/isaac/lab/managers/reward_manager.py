@@ -47,6 +47,12 @@ class RewardManager(ManagerBase):
             cfg: The configuration object or dictionary (``dict[str, RewardTermCfg]``).
             env: The environment instance.
         """
+        # create buffers to parse and store terms
+        self._term_names: list[str] = list()
+        self._term_cfgs: list[RewardTermCfg] = list()
+        self._class_term_cfgs: list[RewardTermCfg] = list()
+
+        # call the base class constructor (this will parse the terms config)
         super().__init__(cfg, env)
         # prepare extra info to store individual reward term information
         self._episode_sums = dict()
@@ -107,7 +113,7 @@ class RewardManager(ManagerBase):
             # store information
             # r_1 + r_2 + ... + r_n
             episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
-            extras["Episode Reward/" + key] = episodic_sum_avg / self._env.max_episode_length_s
+            extras["Episode_Reward/" + key] = episodic_sum_avg / self._env.max_episode_length_s
             # reset episodic sum
             self._episode_sums[key][env_ids] = 0.0
         # reset all the reward terms
@@ -185,12 +191,6 @@ class RewardManager(ManagerBase):
     """
 
     def _prepare_terms(self):
-        """Prepares a list of reward functions."""
-        # parse remaining reward terms and decimate their information
-        self._term_names: list[str] = list()
-        self._term_cfgs: list[RewardTermCfg] = list()
-        self._class_term_cfgs: list[RewardTermCfg] = list()
-
         # check if config is dict already
         if isinstance(self.cfg, dict):
             cfg_items = self.cfg.items()

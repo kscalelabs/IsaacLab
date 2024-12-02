@@ -53,6 +53,12 @@ class TerminationManager(ManagerBase):
             cfg: The configuration object or dictionary (``dict[str, TerminationTermCfg]``).
             env: An environment object.
         """
+        # create buffers to parse and store terms
+        self._term_names: list[str] = list()
+        self._term_cfgs: list[TerminationTermCfg] = list()
+        self._class_term_cfgs: list[TerminationTermCfg] = list()
+
+        # call the base class constructor (this will parse the terms config)
         super().__init__(cfg, env)
         # prepare extra info to store individual termination term information
         self._term_dones = dict()
@@ -135,7 +141,7 @@ class TerminationManager(ManagerBase):
         extras = {}
         for key in self._term_dones.keys():
             # store information
-            extras["Episode Termination/" + key] = torch.count_nonzero(self._term_dones[key][env_ids]).item()
+            extras["Episode_Termination/" + key] = torch.count_nonzero(self._term_dones[key][env_ids]).item()
         # reset all the reward terms
         for term_cfg in self._class_term_cfgs:
             term_cfg.func.reset(env_ids=env_ids)
@@ -219,12 +225,6 @@ class TerminationManager(ManagerBase):
     """
 
     def _prepare_terms(self):
-        """Prepares a list of termination functions."""
-        # parse remaining termination terms and decimate their information
-        self._term_names: list[str] = list()
-        self._term_cfgs: list[TerminationTermCfg] = list()
-        self._class_term_cfgs: list[TerminationTermCfg] = list()
-
         # check if config is dict already
         if isinstance(self.cfg, dict):
             cfg_items = self.cfg.items()

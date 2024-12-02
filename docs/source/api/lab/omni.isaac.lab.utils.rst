@@ -14,9 +14,11 @@
       dict
       interpolation
       math
+      modifiers
       noise
       string
       timer
+      types
       warp
 
    .. Rubric:: Functions
@@ -87,6 +89,17 @@ Math operations
    :inherited-members:
    :show-inheritance:
 
+Modifier operations
+~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: omni.isaac.lab.utils.modifiers
+   :members:
+   :imported-members:
+   :special-members: __call__
+   :inherited-members:
+   :show-inheritance:
+   :exclude-members: __init__, func
+
 Noise operations
 ~~~~~~~~~~~~~~~~
 
@@ -108,6 +121,13 @@ Timer operations
 ~~~~~~~~~~~~~~~~
 
 .. automodule:: omni.isaac.lab.utils.timer
+   :members:
+   :show-inheritance:
+
+Type operations
+~~~~~~~~~~~~~~~
+
+.. automodule:: omni.isaac.lab.utils.types
    :members:
    :show-inheritance:
 

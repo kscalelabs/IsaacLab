@@ -286,18 +286,11 @@ class SpotTerminationsCfg:
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=["body", ".*leg"]), "threshold": 1.0},
     )
-    out_of_bounds = DoneTerm(
-        func=spot_mdp.terminations.terrain_out_of_bounds,
+    terrain_out_of_bounds = DoneTerm(
+        func=mdp.terrain_out_of_bounds,
         params={"asset_cfg": SceneEntityCfg("robot"), "distance_buffer": 3.0},
         time_out=True,
     )
-
-
-@configclass
-class SpotCurriculumCfg:
-    """Curriculum terms for the MDP."""
-
-    pass
 
 
 @configclass
@@ -312,7 +305,6 @@ class SpotFlatEnvCfg(LocomotionVelocityRoughEnvCfg):
     rewards: SpotRewardsCfg = SpotRewardsCfg()
     terminations: SpotTerminationsCfg = SpotTerminationsCfg()
     events: SpotEventCfg = SpotEventCfg()
-    curriculum: SpotCurriculumCfg = SpotCurriculumCfg()
 
     # Viewer
     viewer = ViewerCfg(eye=(10.5, 10.5, 0.3), origin_type="world", env_index=0, asset_name="robot")

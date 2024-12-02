@@ -88,8 +88,12 @@ class SubTerrainBaseCfg:
     is 0.7.
     """
 
-    size: tuple[float, float] = MISSING
-    """The width (along x) and length (along y) of the terrain (in m)."""
+    size: tuple[float, float] = (10.0, 10.0)
+    """The width (along x) and length (along y) of the terrain (in m). Defaults to (10.0, 10.0).
+
+    In case the :class:`~omni.isaac.lab.terrains.TerrainImporterCfg` is used, this parameter gets overridden by
+    :attr:`omni.isaac.lab.scene.TerrainImporterCfg.size` attribute.
+    """
 
     flat_patch_sampling: dict[str, FlatPatchSamplingCfg] | None = None
     """Dictionary of configurations for sampling flat patches on the sub-terrain. Defaults to None,
@@ -105,8 +109,14 @@ class TerrainGeneratorCfg:
     """Configuration for the terrain generator."""
 
     seed: int | None = None
-    """The seed for the random number generator. Defaults to None,
-    in which case the seed is not set."""
+    """The seed for the random number generator. Defaults to None, in which case the seed from the
+    current NumPy's random state is used.
+
+    When the seed is set, the random number generator is initialized with the given seed. This ensures
+    that the generated terrains are deterministic across different runs. If the seed is not set, the
+    seed from the current NumPy's random state is used. This assumes that the seed is set elsewhere in
+    the code.
+    """
 
     curriculum: bool = False
     """Whether to use the curriculum mode. Defaults to False.
@@ -124,6 +134,9 @@ class TerrainGeneratorCfg:
 
     border_width: float = 0.0
     """The width of the border around the terrain (in m). Defaults to 0.0."""
+
+    border_height: float = 1.0
+    """The height of the border around the terrain (in m). Defaults to 1.0."""
 
     num_rows: int = 1
     """Number of rows of sub-terrains to generate. Defaults to 1."""
@@ -176,7 +189,12 @@ class TerrainGeneratorCfg:
     """
 
     use_cache: bool = False
-    """Whether to load the terrain from cache if it exists. Defaults to True."""
+    """Whether to load the sub-terrain from cache if it exists. Defaults to True.
+
+    If enabled, the generated terrains are stored in the cache directory. When generating terrains, the cache
+    is checked to see if the terrain already exists. If it does, the terrain is loaded from the cache. Otherwise,
+    the terrain is generated and stored in the cache. Caching can be used to speed up terrain generation.
+    """
 
     cache_dir: str = "/tmp/isaaclab/terrains"
     """The directory where the terrain cache is stored. Defaults to "/tmp/isaaclab/terrains"."""
