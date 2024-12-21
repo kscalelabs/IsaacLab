@@ -41,12 +41,16 @@ Guidelines for modifications:
 * Brayden Zhang
 * Calvin Yu
 * Chenyu Yang
+* CY (Chien-Ying) Chen
 * David Yang
 * Dorsa Rohani
 * Felix Yu
 * Gary Lvov
 * Giulio Romualdi
+* Haoran Zhou
 * HoJin Jeon
+* Hongwei Xiong
+* Iretiayo Akinola
 * Jan Kerner
 * Jean Tampon
 * Jia Lin Yuan
@@ -60,10 +64,12 @@ Guidelines for modifications:
 * Lorenz Wellhausen
 * Masoud Moghani
 * Michael Gussert
+* Michael Noseworthy
 * Muhong Guo
 * Nuralem Abizov
 * Oyindamola Omotuyi
 * Özhan Özen
+* Peter Du
 * Qian Wan
 * Qinxi Yu
 * René Zurbrügg
@@ -87,3 +93,4 @@ Guidelines for modifications:
 * Gavriel State
 * Hammad Mazhar
 * Marco Hutter
+* Yashraj Narang
