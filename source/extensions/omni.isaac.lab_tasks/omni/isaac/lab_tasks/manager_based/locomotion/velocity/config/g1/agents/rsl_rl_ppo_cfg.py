@@ -18,6 +18,8 @@ class G1RoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     max_iterations = 3000
     save_interval = 50
     experiment_name = "g1_rough"
+    logger = "wandb"
+    wandb_project = "xbot"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
