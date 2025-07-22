@@ -6,7 +6,10 @@
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
+from isaaclab.managers import ObservationGroupCfg, ObservationTermCfg, RewardTermCfg, SceneEntityCfg, TerminationTermCfg, ObservationTermCfg as ObsTerm
+from isaaclab.sensors import ImuCfg
 from isaaclab.utils import configclass
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg, RewardsCfg
@@ -88,10 +91,74 @@ class KBotRewards(RewardsCfg):
         },
     )
 
+@configclass
+class KBotObservations:
+    @configclass
+    class CriticCfg(ObservationGroupCfg):
+        # observation terms (order preserved)
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
+        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        actions = ObsTerm(func=mdp.last_action)
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+            clip=(-1.0, 1.0),
+        )
+        # IMU observations
+        imu_ang_vel = ObsTerm(
+            func=mdp.imu_ang_vel, 
+            params={"asset_cfg": SceneEntityCfg("imu")}, 
+            noise=Unoise(n_min=-0.1, n_max=0.1)
+        )
+        imu_lin_acc = ObsTerm(
+            func=mdp.imu_lin_acc, 
+            params={"asset_cfg": SceneEntityCfg("imu")}, 
+            noise=Unoise(n_min=-0.1, n_max=0.1)
+        )
+
+    @configclass
+    class PolicyCfg(ObservationGroupCfg):
+        # observation terms (order preserved)
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
+        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        actions = ObsTerm(func=mdp.last_action)
+        # IMU observations  
+        imu_ang_vel = ObsTerm(
+            func=mdp.imu_ang_vel, 
+            params={"asset_cfg": SceneEntityCfg("imu")}, 
+            noise=Unoise(n_min=-0.1, n_max=0.1)
+        )
+        imu_lin_acc = ObsTerm(
+            func=mdp.imu_lin_acc, 
+            params={"asset_cfg": SceneEntityCfg("imu")}, 
+            noise=Unoise(n_min=-0.1, n_max=0.1)
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    # Observation groups:
+    critic: CriticCfg = CriticCfg()
+    policy: PolicyCfg = PolicyCfg()
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     rewards: KBotRewards = KBotRewards()
+    observations: KBotObservations = KBotObservations()
 
     def __post_init__(self):
         # post init of parent
@@ -100,6 +167,13 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Scene
         self.scene.robot = KBOT_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"
+
+        self.scene.imu = ImuCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/imu",
+            update_period=0.0,
+            debug_vis=True,
+            gravity_bias=(0.0, 0.0, 0.0),
+        )
 
         # Randomization
         self.events.push_robot = None
@@ -153,11 +227,27 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
         # Terminations
-        self.terminations.base_contact.params["sensor_cfg"].body_names = "base"
-        self.terminations.robot_height = DoneTerm(
-            func=mdp.root_height_below_minimum,
-            params={"minimum_height": 0.5, "asset_cfg": SceneEntityCfg("robot")},
-        )
+        self.terminations.base_contact.params["sensor_cfg"].body_names = [
+            "base",
+            "KC_D_102L_L_Hip_Yoke_Drive",
+            "RS03_5",
+            "KC_D_301L_L_Femur_Lower_Drive",
+            "KC_D_401L_L_Shin_Drive",
+            "KC_C_104L_PitchHardstopDriven",
+            "RS03_6",
+            "KC_C_202L",
+            "KC_C_401L_L_UpForearmDrive",
+            "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+            "KC_D_102R_R_Hip_Yoke_Drive",
+            "RS03_4",
+            "KC_D_301R_R_Femur_Lower_Drive",
+            "KC_D_401R_R_Shin_Drive",
+            "KC_C_104R_PitchHardstopDriven",
+            "RS03_3",
+            "KC_C_202R",
+            "KC_C_401R_R_UpForearmDrive",
+            "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop"
+        ]
 
 
 
