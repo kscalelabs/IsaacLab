@@ -11,7 +11,7 @@ from isaaclab.assets.articulation import ArticulationCfg
 # ①  Asset path
 # --------------------------------------------------------------------- #
 # Use absolute path relative to this file's location
-KBOT_USD = os.path.join(os.path.dirname(__file__), "temp_kbot_usd", "robot.clean.usd")
+KBOT_USD = os.path.join(os.path.dirname(__file__), "temp_kbot_usd", "robot.usd")
 
 # --------------------------------------------------------------------- #
 # ②  Initial “balanced crouch” pose (you fixed this)
