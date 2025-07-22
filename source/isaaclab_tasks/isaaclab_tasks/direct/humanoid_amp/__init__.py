@@ -44,3 +44,13 @@ gym.register(
         "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_walk_amp_cfg.yaml",
     },
 )
+
+gym.register(
+    id="Isaac-KBot-AMP-Walk-Direct-v0",
+    entry_point=f"{__name__}.humanoid_amp_env:HumanoidAmpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.humanoid_amp_env_cfg:KBotAmpWalkEnvCfg",
+        "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_kbot_walk_amp_cfg.yaml",
+    },
+)
