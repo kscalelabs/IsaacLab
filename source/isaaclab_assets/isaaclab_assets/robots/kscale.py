@@ -1,5 +1,6 @@
 """Canonical configuration for the K-Bot v2.0 (headless)."""
 
+import os
 from pathlib import Path
 import math
 import isaaclab.sim as sim_utils
@@ -9,11 +10,8 @@ from isaaclab.assets.articulation import ArticulationCfg
 # --------------------------------------------------------------------- #
 # ①  Asset path
 # --------------------------------------------------------------------- #
-KBOT_USD = str(
-    Path("~/.kscale/robots/kbot-headless/robot/robot.clean/robot.clean.usd")
-    .expanduser()
-    .resolve()
-)
+# Use absolute path relative to this file's location
+KBOT_USD = os.path.join(os.path.dirname(__file__), "temp_kbot_usd", "robot.clean.usd")
 
 # --------------------------------------------------------------------- #
 # ②  Initial “balanced crouch” pose (you fixed this)
