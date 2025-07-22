@@ -7,6 +7,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import ObservationGroupCfg, ObservationTermCfg, RewardTermCfg, SceneEntityCfg, TerminationTermCfg, ObservationTermCfg as ObsTerm
+from isaaclab.sensors import ImuCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
@@ -111,6 +112,17 @@ class KBotObservations:
             noise=Unoise(n_min=-0.1, n_max=0.1),
             clip=(-1.0, 1.0),
         )
+        # IMU observations
+        imu_ang_vel = ObsTerm(
+            func=mdp.imu_ang_vel, 
+            params={"asset_cfg": SceneEntityCfg("imu")}, 
+            noise=Unoise(n_min=-0.1, n_max=0.1)
+        )
+        imu_lin_acc = ObsTerm(
+            func=mdp.imu_lin_acc, 
+            params={"asset_cfg": SceneEntityCfg("imu")}, 
+            noise=Unoise(n_min=-0.1, n_max=0.1)
+        )
 
     @configclass
     class PolicyCfg(ObservationGroupCfg):
@@ -123,6 +135,17 @@ class KBotObservations:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
+        # IMU observations  
+        imu_ang_vel = ObsTerm(
+            func=mdp.imu_ang_vel, 
+            params={"asset_cfg": SceneEntityCfg("imu")}, 
+            noise=Unoise(n_min=-0.1, n_max=0.1)
+        )
+        imu_lin_acc = ObsTerm(
+            func=mdp.imu_lin_acc, 
+            params={"asset_cfg": SceneEntityCfg("imu")}, 
+            noise=Unoise(n_min=-0.1, n_max=0.1)
+        )
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -144,6 +167,13 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Scene
         self.scene.robot = KBOT_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"
+
+        self.scene.imu = ImuCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/imu",
+            update_period=0.0,
+            debug_vis=True,
+            gravity_bias=(0.0, 0.0, 0.0),
+        )
 
         # Randomization
         self.events.push_robot = None
