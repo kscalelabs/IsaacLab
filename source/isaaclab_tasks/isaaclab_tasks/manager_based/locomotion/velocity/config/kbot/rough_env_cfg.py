@@ -153,11 +153,27 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
         # Terminations
-        self.terminations.base_contact.params["sensor_cfg"].body_names = "base"
-        self.terminations.robot_height = DoneTerm(
-            func=mdp.root_height_below_minimum,
-            params={"minimum_height": 0.5, "asset_cfg": SceneEntityCfg("robot")},
-        )
+        self.terminations.base_contact.params["sensor_cfg"].body_names = [
+            "base",
+            "KC_D_102L_L_Hip_Yoke_Drive",
+            "RS03_5",
+            "KC_D_301L_L_Femur_Lower_Drive",
+            "KC_D_401L_L_Shin_Drive",
+            "KC_C_104L_PitchHardstopDriven",
+            "RS03_6",
+            "KC_C_202L",
+            "KC_C_401L_L_UpForearmDrive",
+            "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+            "KC_D_102R_R_Hip_Yoke_Drive",
+            "RS03_4",
+            "KC_D_301R_R_Femur_Lower_Drive",
+            "KC_D_401R_R_Shin_Drive",
+            "KC_C_104R_PitchHardstopDriven",
+            "RS03_3",
+            "KC_C_202R",
+            "KC_C_401R_R_UpForearmDrive",
+            "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop"
+        ]
 
 
 
