@@ -113,6 +113,11 @@ class KBotObservations:
             clip=(-1.0, 1.0),
         )
         # IMU observations
+        imu_projected_gravity = ObsTerm(
+            func=mdp.imu_projected_gravity,
+            params={"asset_cfg": SceneEntityCfg("imu")},
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
         imu_ang_vel = ObsTerm(
             func=mdp.imu_ang_vel, 
             params={"asset_cfg": SceneEntityCfg("imu")}, 
@@ -128,7 +133,8 @@ class KBotObservations:
     class PolicyCfg(ObservationGroupCfg):
         # observation terms (order preserved)
         projected_gravity = ObsTerm(
-            func=mdp.projected_gravity,
+            func=mdp.imu_projected_gravity,
+            params={"asset_cfg": SceneEntityCfg("imu")},
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
         velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
@@ -141,11 +147,12 @@ class KBotObservations:
             params={"asset_cfg": SceneEntityCfg("imu")}, 
             noise=Unoise(n_min=-0.1, n_max=0.1)
         )
-        imu_lin_acc = ObsTerm(
-            func=mdp.imu_lin_acc, 
-            params={"asset_cfg": SceneEntityCfg("imu")}, 
-            noise=Unoise(n_min=-0.1, n_max=0.1)
-        )
+        # No linear acceleration for now
+        # imu_lin_acc = ObsTerm(
+        #     func=mdp.imu_lin_acc, 
+        #     params={"asset_cfg": SceneEntityCfg("imu")}, 
+        #     noise=Unoise(n_min=-0.1, n_max=0.1)
+        # )
 
         def __post_init__(self):
             self.enable_corruption = True
