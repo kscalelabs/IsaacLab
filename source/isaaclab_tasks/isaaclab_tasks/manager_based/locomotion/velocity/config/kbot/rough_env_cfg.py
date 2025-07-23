@@ -80,7 +80,7 @@ class KBotRewards(RewardsCfg):
 
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-1.0,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -96,7 +96,7 @@ class KBotRewards(RewardsCfg):
 
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-5.0,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -214,6 +214,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.robot = KBOT_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"
 
+        # Imu
         self.scene.imu = ImuCfg(
             prim_path="{ENV_REGEX_NS}/Robot/imu",
             update_period=0.0,
