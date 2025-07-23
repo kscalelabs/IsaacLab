@@ -1,9 +1,6 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
 
 import argparse
+import os
 
 from isaaclab.app import AppLauncher
 
@@ -32,7 +29,7 @@ from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from pathlib import Path
 
 
-KBOT_USD = str(Path("~/.kscale/robots/kbot-headless/robot/robot.clean/robot.clean.usd").expanduser().resolve())
+KBOT_USD = os.path.join(os.path.dirname(__file__), "../../../source/isaaclab_assets/isaaclab_assets/robots/temp_kbot_usd", "robot.usd")
 
 KBOT_CONFIG = ArticulationCfg(
     # Spawn the USD you exported from the URDF
