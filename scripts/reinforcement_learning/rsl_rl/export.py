@@ -29,33 +29,25 @@ parser.add_argument(
     required=True,
     help=".pt file produced by the training / play script",
 )
-# Optional – number of simulated envs (defaults to 1 to keep things fast)
+
 parser.add_argument("--num_envs", type=int, default=1)
 
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 
-# ----------------------------------------------------------------------------
-# Launch Omniverse app first (required by all Isaac Lab scripts)
-# ----------------------------------------------------------------------------
+# Launch Omniverse app (unclear if this is needed)
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app  # noqa: F841 – kept for parity with other scripts
 
-# ----------------------------------------------------------------------------
-# Standard Python imports that depend on (or interact with) the simulator
-# ----------------------------------------------------------------------------
+
 import gymnasium as gym  # noqa: E402
 from packaging import version  # noqa: E402
 from rsl_rl.runners import OnPolicyRunner  # noqa: E402
 
 from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent  # noqa: E402
-from isaaclab.utils.pretrained_checkpoint import (
-    get_published_pretrained_checkpoint,
-)  # noqa: E402
 
 from isaaclab_rl.rsl_rl import (  # noqa: E402
     RslRlVecEnvWrapper,
-    export_policy_as_jit,  # still useful for quick JIT export
 )
 
 import isaaclab_tasks  # noqa: F401, E402 – ensure gym envs are registered
@@ -63,10 +55,6 @@ from isaaclab_tasks.utils import (  # noqa: E402
     load_cfg_from_registry,
     parse_env_cfg,
 )
-
-# ----------------------------------------------------------------------------
-# Create the Isaac environment (single-env, no rendering) and load the policy
-# ----------------------------------------------------------------------------
 
 env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=args.num_envs)
 env = gym.make(args.task, cfg=env_cfg, render_mode=None)
@@ -81,14 +69,8 @@ action_dim = env.action_space.shape[0]
 
 obs_dim = env.observation_space["policy"].shape[-1]
 
-# ---------------------------------------------------------------------------
-# Retrieve the default rsl_rl agent configuration for the task (used only to
-#   build a dummy OnPolicyRunner; values don’t matter for inference)
-# ---------------------------------------------------------------------------
-
 task_name = args.task.split(":")[-1]
 agent_cfg = load_cfg_from_registry(task_name, "rsl_rl_cfg_entry_point")
-# Make sure devices line up with CLI arg.
 agent_cfg.device = args.device
 
 # Build runner & load checkpoint
@@ -115,7 +97,6 @@ if normalizer is None:
 else:
     normalizer = copy.deepcopy(normalizer).cpu().eval()
 
-
 class ActorWrapper(torch.nn.Module):
     """Wraps (normalizer → actor) into a single forward pass."""
 
@@ -124,7 +105,7 @@ class ActorWrapper(torch.nn.Module):
         self.actor = actor
         self.norm = norm
 
-    def forward(self, obs: torch.Tensor) -> torch.Tensor:  # noqa: D401 – simple wrapper
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
         return self.actor(self.norm(obs))
 
 
@@ -163,7 +144,7 @@ _INIT_JOINT_POS = torch.tensor(
 )
 
 
-def _init_fn() -> torch.Tensor:  # noqa: D401 – concise docstring
+def _init_fn() -> torch.Tensor:
     """Returns the initial carry tensor (all zeros)."""
     return torch.zeros(CARRY_SHAPE)
 
@@ -208,10 +189,6 @@ step_fn = torch.jit.trace(
 
 init_fn = torch.jit.trace(_init_fn, ())
 
-# ----------------------------------------------------------------------------
-# Export to ONNX (via kinfer) and package
-# ----------------------------------------------------------------------------
-
 joint_names = list(env.unwrapped.scene["robot"].data.joint_names)
 metadata = PyModelMetadata(
     joint_names=joint_names,
@@ -230,8 +207,3 @@ with open(output_path, "wb") as f:
     f.write(kinfer_blob)
 
 print(f"[OK] Export completed → {output_path}")
-
-# Optionally also save the JIT + ONNX versions (same directory /exported)
-export_dir = output_path.parent / "exported"
-export_policy_as_jit(policy_nn, normalizer, path=str(export_dir), filename="policy.pt")
-print(f"[INFO] TorchScript policy saved to {export_dir}/policy.pt")
