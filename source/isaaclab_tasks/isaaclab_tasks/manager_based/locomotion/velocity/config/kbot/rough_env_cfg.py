@@ -80,7 +80,7 @@ class KBotRewards(RewardsCfg):
 
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-1.0,
+        weight=-0.1,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -96,7 +96,7 @@ class KBotRewards(RewardsCfg):
 
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-5.0,
+        weight=-0.1,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -135,10 +135,11 @@ class KBotObservations:
         velocity_commands = ObsTerm(
             func=mdp.generated_commands, params={"command_name": "base_velocity"}
         )
-        joint_pos = ObsTerm(
-            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01)
-        )
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        # Replaced with privileged observations without noise below
+        # joint_pos = ObsTerm(
+        #     func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01)
+        # )
+        # joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
         height_scan = ObsTerm(
             func=mdp.height_scan,
@@ -162,6 +163,45 @@ class KBotObservations:
             params={"asset_cfg": SceneEntityCfg("imu")},
             noise=Unoise(n_min=-0.1, n_max=0.1),
         )
+        
+        # Privileged Critic Observations
+        # Joint dynamics information (privileged)
+        joint_torques = ObsTerm(
+            func=mdp.joint_effort,
+            params={"asset_cfg": SceneEntityCfg("robot")},
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),
+        )
+        
+        # Contact forces on feet (privileged foot contact information)
+        feet_contact_forces = ObsTerm(
+            func=mdp.body_incoming_wrench,
+            scale=0.01,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"])},
+        )
+        
+        # Body poses for important body parts (privileged state info)
+        body_poses = ObsTerm(
+            func=mdp.body_pose_w,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=["base", "KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"])},
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),
+        )
+        
+        # Joint positions and velocities with less noise (privileged accurate state)
+        joint_pos_accurate = ObsTerm(
+            func=mdp.joint_pos_rel, 
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),  # Much less noise than policy
+        )
+        joint_vel_accurate = ObsTerm(
+            func=mdp.joint_vel_rel, 
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),  # Much less noise than policy  
+        )
+        
+        # Base position (full pose information - privileged)
+        base_pos = ObsTerm(func=mdp.base_pos_z, noise=Unoise(n_min=-0.0001, n_max=0.0001))
+        
+        # Root state information (privileged)
+        root_lin_vel_w = ObsTerm(func=mdp.root_lin_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001))
+        root_ang_vel_w = ObsTerm(func=mdp.root_ang_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001))
 
     @configclass
     class PolicyCfg(ObservationGroupCfg):
