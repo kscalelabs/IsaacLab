@@ -167,11 +167,12 @@ def _step_fn(
     joint_angular_velocities: torch.Tensor,
     command: torch.Tensor,
     carry: torch.Tensor,
+    gyroscope: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Policy step."""
     offset_joint_angles = joint_angles - _INIT_JOINT_POS
     scaled_projected_gravity = projected_gravity / 9.81
-    obs = torch.cat((scaled_projected_gravity, command, offset_joint_angles, joint_angular_velocities, carry), dim=-1)
+    obs = torch.cat((scaled_projected_gravity, command, offset_joint_angles, joint_angular_velocities, carry, gyroscope), dim=-1)
     actions = wrapper(obs)
     return (actions * 0.5) + _INIT_JOINT_POS, actions
 
@@ -183,6 +184,7 @@ step_fn = torch.jit.trace(
         torch.zeros(num_joints),
         torch.zeros(NUM_COMMANDS),
         torch.zeros(*CARRY_SHAPE),
+        torch.zeros(3),
     ),
 )
 
