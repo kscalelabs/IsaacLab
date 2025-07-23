@@ -9,6 +9,7 @@
 
 import argparse
 import copy
+import math
 from pathlib import Path
 
 import torch
@@ -132,6 +133,29 @@ CARRY_SHAPE: tuple[int, ...] = (num_joints,)
 
 NUM_COMMANDS = 3
 
+_INIT_JOINT_POS = torch.tensor([
+    math.radians(20.0),    # dof_right_shoulder_pitch_03
+    0.0,                   # dof_right_shoulder_roll_03
+    math.radians(-20.0),   # dof_right_shoulder_yaw_02
+    0.0,                   # dof_right_elbow_02
+    0.0,                   # dof_right_wrist_00
+    math.radians(10.0),    # dof_left_shoulder_pitch_03
+    0.0,                   # dof_left_shoulder_roll_03
+    math.radians(-10.0),   # dof_left_shoulder_yaw_02
+    0.0,                   # dof_left_elbow_02
+    0.0,                   # dof_left_wrist_00
+    0.0,                   # dof_right_hip_pitch_04
+    0.0,                   # dof_right_hip_roll_03
+    math.radians(50.0),    # dof_right_hip_yaw_03
+    math.radians(-90.0),   # dof_right_knee_04
+    math.radians(-50.0),   # dof_right_ankle_02
+    math.radians(90.0),    # dof_left_hip_pitch_04
+    math.radians(-30.0),   # dof_left_hip_roll_03
+    0.0,                   # dof_left_hip_yaw_03
+    math.radians(30.0),    # dof_left_knee_04
+    0.0,                   # dof_left_ankle_02
+])
+
 def _init_fn() -> torch.Tensor:  # noqa: D401 – concise docstring
     """Returns the initial carry tensor (all zeros)."""
     return torch.zeros(CARRY_SHAPE)
@@ -145,10 +169,11 @@ def _step_fn(
     carry: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Policy step."""
-    obs = torch.cat((projected_gravity, command, joint_angles, joint_angular_velocities, carry), dim=-1)
+    offset_joint_angles = joint_angles - _INIT_JOINT_POS
+    scaled_projected_gravity = projected_gravity / 9.81
+    obs = torch.cat((scaled_projected_gravity, command, offset_joint_angles, joint_angular_velocities, carry), dim=-1)
     actions = wrapper(obs)
-
-    return actions, actions
+    return (actions * 0.5) + _INIT_JOINT_POS, actions
 
 step_fn = torch.jit.trace(
     _step_fn,
