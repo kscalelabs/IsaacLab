@@ -80,7 +80,7 @@ class KBotRewards(RewardsCfg):
 
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.5,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -96,7 +96,7 @@ class KBotRewards(RewardsCfg):
 
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.5,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -106,11 +106,13 @@ class KBotRewards(RewardsCfg):
                     "dof_left_shoulder_roll_03",
                     "dof_left_shoulder_yaw_02",
                     "dof_left_elbow_02",
+                    "dof_left_wrist_00",
                     # right arm
                     "dof_right_shoulder_pitch_03",
                     "dof_right_shoulder_roll_03",
                     "dof_right_shoulder_yaw_02",
                     "dof_right_elbow_02",
+                    "dof_right_wrist_00",
                 ],
             )
         },
