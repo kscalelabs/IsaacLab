@@ -7,74 +7,179 @@ import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
-# --------------------------------------------------------------------- #
-# ①  Asset path
-# --------------------------------------------------------------------- #
+
 # Use absolute path relative to this file's location
 KBOT_USD = os.path.join(os.path.dirname(__file__), "temp_kbot_usd", "robot.usd")
 
-# --------------------------------------------------------------------- #
-# ②  Initial “balanced crouch” pose (you fixed this)
-# --------------------------------------------------------------------- #
 _INIT_JOINT_POS = {
-    # arms
     "dof_right_shoulder_pitch_03": 0.0,
-    "dof_right_shoulder_roll_03":  math.radians(-10.0),
-    "dof_right_shoulder_yaw_02":   0.0,
-    "dof_right_elbow_02":          math.radians(90.0),
-    "dof_right_wrist_00":          0.0,
-    "dof_left_shoulder_pitch_03":  0.0,
-    "dof_left_shoulder_roll_03":   math.radians(10.0),
-    "dof_left_shoulder_yaw_02":    0.0,
-    "dof_left_elbow_02":           math.radians(-90.0),
-    "dof_left_wrist_00":           0.0,
-    # legs
+    "dof_right_shoulder_roll_03": math.radians(-10.0),
+    "dof_right_shoulder_yaw_02": 0.0,
+    "dof_right_elbow_02": math.radians(90.0),
+    "dof_right_wrist_00": 0.0,
+    "dof_left_shoulder_pitch_03": 0.0,
+    "dof_left_shoulder_roll_03": math.radians(10.0),
+    "dof_left_shoulder_yaw_02": 0.0,
+    "dof_left_elbow_02": math.radians(-90.0),
+    "dof_left_wrist_00": 0.0,
     "dof_right_hip_pitch_04": math.radians(-20.0),
-    "dof_right_hip_roll_03":  math.radians(0.0),
-    "dof_right_hip_yaw_03":   0.0,
-    "dof_right_knee_04":      math.radians(-50.0),
-    "dof_right_ankle_02":     math.radians(30.0),
-    "dof_left_hip_pitch_04":  math.radians(20.0),
-    "dof_left_hip_roll_03":   math.radians(0.0),
-    "dof_left_hip_yaw_03":    0.0,
-    "dof_left_knee_04":       math.radians(50.0),
-    "dof_left_ankle_02":      math.radians(-30.0),
+    "dof_right_hip_roll_03": math.radians(0.0),
+    "dof_right_hip_yaw_03": 0.0,
+    "dof_right_knee_04": math.radians(-50.0),
+    "dof_right_ankle_02": math.radians(30.0),
+    "dof_left_hip_pitch_04": math.radians(20.0),
+    "dof_left_hip_roll_03": math.radians(0.0),
+    "dof_left_hip_yaw_03": 0.0,
+    "dof_left_knee_04": math.radians(50.0),
+    "dof_left_ankle_02": math.radians(-30.0),
 }
 
-# --------------------------------------------------------------------- #
-# ③  Per-joint actuator specs (all numbers are floats)
-# --------------------------------------------------------------------- #
+
 _JOINT_META = {
-    # ---------------- Arms ----------------
-    "dof_right_shoulder_pitch_03": dict(kp=100.0, kd=8.284, torque=42.0,  vmax=18.849, arm=0.02),
-    "dof_right_shoulder_roll_03":  dict(kp=100.0, kd=8.257, torque=42.0,  vmax=18.849, arm=0.02),
-    "dof_right_shoulder_yaw_02":   dict(kp=40.0,  kd=0.945, torque=11.9,  vmax=37.699, arm=0.0042),
-    "dof_right_elbow_02":          dict(kp=40.0,  kd=1.266, torque=11.9,  vmax=37.699, arm=0.0042),
-    "dof_right_wrist_00":          dict(kp=20.0,  kd=0.295, torque=9.8,   vmax=27.227, arm=0.001),
-
-    "dof_left_shoulder_pitch_03":  dict(kp=100.0, kd=8.284, torque=42.0,  vmax=18.849, arm=0.02),
-    "dof_left_shoulder_roll_03":   dict(kp=100.0, kd=8.257, torque=42.0,  vmax=18.849, arm=0.02),
-    "dof_left_shoulder_yaw_02":    dict(kp=40.0,  kd=0.945, torque=11.9,  vmax=37.699, arm=0.0042),
-    "dof_left_elbow_02":           dict(kp=40.0,  kd=1.266, torque=11.9,  vmax=37.699, arm=0.0042),
-    "dof_left_wrist_00":           dict(kp=20.0,  kd=0.295, torque=9.8,   vmax=27.227, arm=0.001),
-
-    # ---------------- Legs ----------------
-    "dof_right_hip_pitch_04":      dict(kp=150.0, kd=24.722, torque=84.0,  vmax=17.488, arm=0.04),
-    "dof_right_hip_roll_03":       dict(kp=200.0, kd=26.387, torque=42.0,  vmax=18.849, arm=0.02),
-    "dof_right_hip_yaw_03":        dict(kp=100.0, kd=3.419,  torque=42.0,  vmax=18.849, arm=0.02),
-    "dof_right_knee_04":           dict(kp=150.0, kd=8.654,  torque=84.0,  vmax=17.488, arm=0.04),
-    "dof_right_ankle_02":          dict(kp=40.0,  kd=0.99,  torque=11.9,  vmax=37.699, arm=0.0042),
-
-    "dof_left_hip_pitch_04":       dict(kp=150.0, kd=24.722, torque=84.0,  vmax=17.488, arm=0.04),
-    "dof_left_hip_roll_03":        dict(kp=200.0, kd=26.387, torque=42.0,  vmax=18.849, arm=0.02),
-    "dof_left_hip_yaw_03":         dict(kp=100.0, kd=3.419,  torque=42.0,  vmax=18.849, arm=0.02),
-    "dof_left_knee_04":            dict(kp=150.0, kd=8.654,  torque=84.0,  vmax=17.488, arm=0.04),
-    "dof_left_ankle_02":           dict(kp=40.0,  kd=0.99,  torque=11.9,  vmax=37.699, arm=0.0042),
+    "dof_right_shoulder_pitch_03": {
+        "kp": 100.0,
+        "kd": 8.284,
+        "torque": 42.0,
+        "vmax": 18.849,
+        "arm": 0.02,
+    },
+    "dof_right_shoulder_roll_03": {
+        "kp": 100.0,
+        "kd": 8.257,
+        "torque": 42.0,
+        "vmax": 18.849,
+        "arm": 0.02,
+    },
+    "dof_right_shoulder_yaw_02": {
+        "kp": 40.0,
+        "kd": 0.945,
+        "torque": 11.9,
+        "vmax": 37.699,
+        "arm": 0.0042,
+    },
+    "dof_right_elbow_02": {
+        "kp": 40.0,
+        "kd": 1.266,
+        "torque": 11.9,
+        "vmax": 37.699,
+        "arm": 0.0042,
+    },
+    "dof_right_wrist_00": {
+        "kp": 20.0,
+        "kd": 0.295,
+        "torque": 9.8,
+        "vmax": 27.227,
+        "arm": 0.001,
+    },
+    "dof_left_shoulder_pitch_03": {
+        "kp": 100.0,
+        "kd": 8.284,
+        "torque": 42.0,
+        "vmax": 18.849,
+        "arm": 0.02,
+    },
+    "dof_left_shoulder_roll_03": {
+        "kp": 100.0,
+        "kd": 8.257,
+        "torque": 42.0,
+        "vmax": 18.849,
+        "arm": 0.02,
+    },
+    "dof_left_shoulder_yaw_02": {
+        "kp": 40.0,
+        "kd": 0.945,
+        "torque": 11.9,
+        "vmax": 37.699,
+        "arm": 0.0042,
+    },
+    "dof_left_elbow_02": {
+        "kp": 40.0,
+        "kd": 1.266,
+        "torque": 11.9,
+        "vmax": 37.699,
+        "arm": 0.0042,
+    },
+    "dof_left_wrist_00": {
+        "kp": 20.0,
+        "kd": 0.295,
+        "torque": 9.8,
+        "vmax": 27.227,
+        "arm": 0.001,
+    },
+    "dof_right_hip_pitch_04": {
+        "kp": 150.0,
+        "kd": 24.722,
+        "torque": 84.0,
+        "vmax": 17.488,
+        "arm": 0.04,
+    },
+    "dof_right_hip_roll_03": {
+        "kp": 200.0,
+        "kd": 26.387,
+        "torque": 42.0,
+        "vmax": 18.849,
+        "arm": 0.02,
+    },
+    "dof_right_hip_yaw_03": {
+        "kp": 100.0,
+        "kd": 3.419,
+        "torque": 42.0,
+        "vmax": 18.849,
+        "arm": 0.02,
+    },
+    "dof_right_knee_04": {
+        "kp": 150.0,
+        "kd": 8.654,
+        "torque": 84.0,
+        "vmax": 17.488,
+        "arm": 0.04,
+    },
+    "dof_right_ankle_02": {
+        "kp": 40.0,
+        "kd": 0.99,
+        "torque": 11.9,
+        "vmax": 37.699,
+        "arm": 0.0042,
+    },
+    "dof_left_hip_pitch_04": {
+        "kp": 150.0,
+        "kd": 24.722,
+        "torque": 84.0,
+        "vmax": 17.488,
+        "arm": 0.04,
+    },
+    "dof_left_hip_roll_03": {
+        "kp": 200.0,
+        "kd": 26.387,
+        "torque": 42.0,
+        "vmax": 18.849,
+        "arm": 0.02,
+    },
+    "dof_left_hip_yaw_03": {
+        "kp": 100.0,
+        "kd": 3.419,
+        "torque": 42.0,
+        "vmax": 18.849,
+        "arm": 0.02,
+    },
+    "dof_left_knee_04": {
+        "kp": 150.0,
+        "kd": 8.654,
+        "torque": 84.0,
+        "vmax": 17.488,
+        "arm": 0.04,
+    },
+    "dof_left_ankle_02": {
+        "kp": 40.0,
+        "kd": 0.99,
+        "torque": 11.9,
+        "vmax": 37.699,
+        "arm": 0.0042,
+    },
 }
 
-# --------------------------------------------------------------------- #
-# ④  Build one ImplicitActuatorCfg **per joint**
-# --------------------------------------------------------------------- #
+
+# Build one ImplicitActuatorCfg per joint
 _ACTUATORS = {
     jn: ImplicitActuatorCfg(
         joint_names_expr=[jn],
@@ -87,9 +192,7 @@ _ACTUATORS = {
     for jn, meta in _JOINT_META.items()
 }
 
-# --------------------------------------------------------------------- #
-# ⑤  Master articulation configuration
-# --------------------------------------------------------------------- #
+
 KBOT_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=KBOT_USD,
@@ -115,5 +218,5 @@ KBOT_CFG = ArticulationCfg(
         joint_vel={".*": 0.0},
     ),
     soft_joint_pos_limit_factor=0.9,
-    actuators=_ACTUATORS,  # ← 20 explicitly-listed actuator configs
+    actuators=_ACTUATORS,
 )
