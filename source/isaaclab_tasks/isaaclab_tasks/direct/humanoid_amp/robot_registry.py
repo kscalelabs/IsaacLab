@@ -26,6 +26,8 @@ class RobotAMPDescriptor:
     reference_body: str           
     key_bodies: list[str] # 4 limbs
     robot_config: RobotConfig
+    overwrite_gains: bool = True  # if True, AMP env overwrites actuator gains
+    use_default_offset: bool = False  # if True, AMP maps zero action to USD default pose
 
 ROBOTS = {}
 def register(desc: RobotAMPDescriptor):
@@ -96,6 +98,8 @@ register(
         reference_body="base", 
         key_bodies=["KB_C_501X_Right_Bayonet_Adapter_Hard_Stop", "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop", "KB_D_501R_R_LEG_FOOT", "KB_D_501L_L_LEG_FOOT"],
         robot_config=KBOT_CONFIG,
+        overwrite_gains=True,  # keep original actuator gains for KBot in AMP
+        use_default_offset=True,  # map zero action to default USD pose
     )
 )
 

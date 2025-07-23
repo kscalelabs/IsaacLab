@@ -47,6 +47,9 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
     num_amp_observations = 2
     amp_observation_space: int = None
 
+    # action mapping flag
+    use_default_offset: bool = False
+
     early_termination = True
     termination_height = 0.5
 
@@ -56,12 +59,15 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
     key_body_names: list[str] = None
 
     reset_strategy = "random"  # default, random, random-start
+    # reset_strategy = "default"  # default, random, random-start
     """Strategy to be followed when resetting each environment (humanoid's pose and joint states).
 
     * default: pose and joint states are set to the initial state of the asset.
     * random: pose and joint states are set by sampling motions at random, uniform times.
     * random-start: pose and joint states are set by sampling motion at the start (time zero).
     """
+    reset_height_offset = 0.15
+    """An offset to be added to the root's height when resetting the environment."""
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -88,16 +94,24 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
         desc = ROBOTS[self.robot_task]
         
         # Set robot configuration
-        self.robot = desc.cfg.replace(prim_path="/World/envs/env_.*/Robot").replace(
-            actuators={
-                "body": ImplicitActuatorCfg(
-                    joint_names_expr=[".*"],
-                    velocity_limit=100.0,
-                    stiffness=None,
-                    damping=None,
-                ),
-            },
-        )
+        # By default, AMP overwrites actuator gains to rely on simulation's implicit PD.
+        # If the descriptor requests to preserve the original per-joint gains, we skip this replacement.
+
+        robot_cfg = desc.cfg.replace(prim_path="/World/envs/env_.*/Robot")
+
+        if desc.overwrite_gains:
+            robot_cfg = robot_cfg.replace(
+                actuators={
+                    "body": ImplicitActuatorCfg(
+                        joint_names_expr=[".*"],
+                        velocity_limit=100.0,
+                        stiffness=None,
+                        damping=None,
+                    ),
+                },
+            )
+
+        self.robot = robot_cfg
         
         # Set motion and body configuration
         self.motion_file = desc.motion_file
@@ -110,6 +124,9 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
         self.action_space = robot_config.action_space
         self.state_space = robot_config.state_space
         self.amp_observation_space = robot_config.amp_observation_space
+
+        # propagate action offset preference
+        self.use_default_offset = desc.use_default_offset
 
 
 @configclass
@@ -130,3 +147,4 @@ class HumanoidAmpWalkEnvCfg(HumanoidAmpEnvCfg):
 @configclass
 class KBotAmpWalkEnvCfg(HumanoidAmpEnvCfg):
     robot_task: RobotTask = RobotTask.KBOT_WALK
+    reset_height_offset = 0.00

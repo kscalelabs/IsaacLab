@@ -13,7 +13,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from isaaclab.utils.math import quat_apply
+from isaaclab.utils.math import quat_apply, quat_apply_inverse
 
 from .humanoid_amp_env_cfg import HumanoidAmpEnvCfg
 from .motions import MotionLoader
@@ -28,7 +28,15 @@ class HumanoidAmpEnv(DirectRLEnv):
         # action offset and scale
         dof_lower_limits = self.robot.data.soft_joint_pos_limits[0, :, 0]
         dof_upper_limits = self.robot.data.soft_joint_pos_limits[0, :, 1]
-        self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
+
+        if self.cfg.use_default_offset:
+            # zero action keeps robot in its USD default pose
+            self.action_offset = self.robot.data.default_joint_pos[0]
+        else:
+            # zero action maps to mid-range (legacy behaviour)
+            self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
+
+        # full joint span as scale (unchanged)
         self.action_scale = dof_upper_limits - dof_lower_limits
 
         # load motion
@@ -103,7 +111,12 @@ class HumanoidAmpEnv(DirectRLEnv):
         return {"policy": obs}
 
     def _get_rewards(self) -> torch.Tensor:
-        return torch.ones((self.num_envs,), dtype=torch.float32, device=self.sim.device)
+        # Get linear velocity of reference body in world frame
+        lin_vel_w = self.robot.data.body_lin_vel_w[:, self.ref_body_index]
+        # Transform velocity to the robot's local (body) frame
+        quat_w = self.robot.data.body_quat_w[:, self.ref_body_index]
+        lin_vel_b = quat_apply_inverse(quat_w, lin_vel_w)
+        return compute_direction_reward(lin_vel_b)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
@@ -160,7 +173,7 @@ class HumanoidAmpEnv(DirectRLEnv):
         motion_torso_index = self._motion_loader.get_body_index([self.cfg.reference_body])[0]
         root_state = self.robot.data.default_root_state[env_ids].clone()
         root_state[:, 0:3] = body_positions[:, motion_torso_index] + self.scene.env_origins[env_ids]
-        root_state[:, 2] += 0.15  # lift the humanoid slightly to avoid collisions with the ground
+        root_state[:, 2] += self.cfg.reset_height_offset  # lift the humanoid slightly to avoid collisions with the ground
         root_state[:, 3:7] = body_rotations[:, motion_torso_index]
         root_state[:, 7:10] = body_linear_velocities[:, motion_torso_index]
         root_state[:, 10:13] = body_angular_velocities[:, motion_torso_index]
@@ -240,3 +253,26 @@ def compute_obs(
         dim=-1,
     )
     return obs
+
+
+@torch.jit.script
+def compute_direction_reward(lin_vel_body: torch.Tensor) -> torch.Tensor:
+    """Compute cosine similarity between body-frame velocity and +X.
+
+    Args:
+        lin_vel_body: Linear velocity in the body frame, shape (N, 3).
+
+    Returns:
+        Reward in the range [-1, 1]. Positive for forward (+X) motion, negative for backward.
+    """
+    # ignore vertical component — focus on horizontal movement
+    planar_speed = torch.linalg.norm(lin_vel_body[:, :2], dim=-1)
+    # If speed is negligible, give zero reward to avoid division by zero
+    eps = 1e-6
+    reward = torch.where(
+        planar_speed > eps,
+        lin_vel_body[:, 0] / (planar_speed + eps),
+        torch.zeros_like(planar_speed),
+    )
+    reward = torch.clamp(reward, -1.0, 1.0)
+    return reward
