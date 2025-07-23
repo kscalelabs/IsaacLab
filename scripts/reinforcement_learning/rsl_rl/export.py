@@ -49,7 +49,9 @@ from packaging import version  # noqa: E402
 from rsl_rl.runners import OnPolicyRunner  # noqa: E402
 
 from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent  # noqa: E402
-from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint  # noqa: E402
+from isaaclab.utils.pretrained_checkpoint import (
+    get_published_pretrained_checkpoint,
+)  # noqa: E402
 
 from isaaclab_rl.rsl_rl import (  # noqa: E402
     RslRlVecEnvWrapper,
@@ -77,7 +79,7 @@ env = RslRlVecEnvWrapper(env, clip_actions=None)
 
 action_dim = env.action_space.shape[0]
 
-obs_dim = env.observation_space['policy'].shape[-1]
+obs_dim = env.observation_space["policy"].shape[-1]
 
 # ---------------------------------------------------------------------------
 # Retrieve the default rsl_rl agent configuration for the task (used only to
@@ -113,6 +115,7 @@ if normalizer is None:
 else:
     normalizer = copy.deepcopy(normalizer).cpu().eval()
 
+
 class ActorWrapper(torch.nn.Module):
     """Wraps (normalizer → actor) into a single forward pass."""
 
@@ -124,6 +127,7 @@ class ActorWrapper(torch.nn.Module):
     def forward(self, obs: torch.Tensor) -> torch.Tensor:  # noqa: D401 – simple wrapper
         return self.actor(self.norm(obs))
 
+
 wrapper = ActorWrapper(actor_net, normalizer).eval()
 for p in wrapper.parameters():
     p.requires_grad = False
@@ -133,28 +137,31 @@ CARRY_SHAPE: tuple[int, ...] = (num_joints,)
 
 NUM_COMMANDS = 3
 
-_INIT_JOINT_POS = torch.tensor([
-    math.radians(20.0),    # dof_right_shoulder_pitch_03
-    0.0,                   # dof_right_shoulder_roll_03
-    math.radians(-20.0),   # dof_right_shoulder_yaw_02
-    0.0,                   # dof_right_elbow_02
-    0.0,                   # dof_right_wrist_00
-    math.radians(10.0),    # dof_left_shoulder_pitch_03
-    0.0,                   # dof_left_shoulder_roll_03
-    math.radians(-10.0),   # dof_left_shoulder_yaw_02
-    0.0,                   # dof_left_elbow_02
-    0.0,                   # dof_left_wrist_00
-    0.0,                   # dof_right_hip_pitch_04
-    0.0,                   # dof_right_hip_roll_03
-    math.radians(50.0),    # dof_right_hip_yaw_03
-    math.radians(-90.0),   # dof_right_knee_04
-    math.radians(-50.0),   # dof_right_ankle_02
-    math.radians(90.0),    # dof_left_hip_pitch_04
-    math.radians(-30.0),   # dof_left_hip_roll_03
-    0.0,                   # dof_left_hip_yaw_03
-    math.radians(30.0),    # dof_left_knee_04
-    0.0,                   # dof_left_ankle_02
-])
+_INIT_JOINT_POS = torch.tensor(
+    [
+        math.radians(20.0),  # dof_right_shoulder_pitch_03
+        0.0,  # dof_right_shoulder_roll_03
+        math.radians(-20.0),  # dof_right_shoulder_yaw_02
+        0.0,  # dof_right_elbow_02
+        0.0,  # dof_right_wrist_00
+        math.radians(10.0),  # dof_left_shoulder_pitch_03
+        0.0,  # dof_left_shoulder_roll_03
+        math.radians(-10.0),  # dof_left_shoulder_yaw_02
+        0.0,  # dof_left_elbow_02
+        0.0,  # dof_left_wrist_00
+        0.0,  # dof_right_hip_pitch_04
+        0.0,  # dof_right_hip_roll_03
+        math.radians(50.0),  # dof_right_hip_yaw_03
+        math.radians(-90.0),  # dof_right_knee_04
+        math.radians(-50.0),  # dof_right_ankle_02
+        math.radians(90.0),  # dof_left_hip_pitch_04
+        math.radians(-30.0),  # dof_left_hip_roll_03
+        0.0,  # dof_left_hip_yaw_03
+        math.radians(30.0),  # dof_left_knee_04
+        0.0,  # dof_left_ankle_02
+    ]
+)
+
 
 def _init_fn() -> torch.Tensor:  # noqa: D401 – concise docstring
     """Returns the initial carry tensor (all zeros)."""
@@ -172,9 +179,20 @@ def _step_fn(
     """Policy step."""
     offset_joint_angles = joint_angles - _INIT_JOINT_POS
     scaled_projected_gravity = projected_gravity / 9.81
-    obs = torch.cat((scaled_projected_gravity, command, offset_joint_angles, joint_angular_velocities, carry, gyroscope), dim=-1)
+    obs = torch.cat(
+        (
+            scaled_projected_gravity,
+            command,
+            offset_joint_angles,
+            joint_angular_velocities,
+            carry,
+            gyroscope,
+        ),
+        dim=-1,
+    )
     actions = wrapper(obs)
     return (actions * 0.5) + _INIT_JOINT_POS, actions
+
 
 step_fn = torch.jit.trace(
     _step_fn,
@@ -217,4 +235,3 @@ print(f"[OK] Export completed → {output_path}")
 export_dir = output_path.parent / "exported"
 export_policy_as_jit(policy_nn, normalizer, path=str(export_dir), filename="policy.pt")
 print(f"[INFO] TorchScript policy saved to {export_dir}/policy.pt")
-
