@@ -1,3 +1,9 @@
+"""Basic sanity check script to load kbot in Isaacsim.
+
+Usage:
+# cd to IsaacLab root directory
+./isaaclab.sh -p scripts/tutorials/01_assets/add_new_robot_kbot.py 
+"""
 
 import argparse
 import os
@@ -8,7 +14,9 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(
     description="This script demonstrates adding a custom robot to an Isaac Lab environment."
 )
-parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to spawn.")
+parser.add_argument(
+    "--num_envs", type=int, default=1, help="Number of environments to spawn."
+)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -29,7 +37,11 @@ from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from pathlib import Path
 
 
-KBOT_USD = os.path.join(os.path.dirname(__file__), "../../../source/isaaclab_assets/isaaclab_assets/robots/temp_kbot_usd", "robot.usd")
+KBOT_USD = os.path.join(
+    os.path.dirname(__file__),
+    "../../../source/isaaclab_assets/isaaclab_assets/robots/temp_kbot_usd",
+    "robot.usd",
+)
 
 KBOT_CONFIG = ArticulationCfg(
     # Spawn the USD you exported from the URDF
@@ -41,21 +53,19 @@ KBOT_CONFIG = ArticulationCfg(
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=True,
-            solver_position_iteration_count=8,   # humanoids need more iters
+            solver_position_iteration_count=8,  # humanoids need more iters
             solver_velocity_iteration_count=0,
         ),
     ),
-
     # Start the robot upright ~1 m above the ground
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 1.05),
         joint_pos={},
     ),
-
     # For now just use the same actuator for all joints
     actuators={
         "all_dofs": ImplicitActuatorCfg(
-            joint_names_expr=["dof_.*"], # matches all 20 "dof_*" joints
+            joint_names_expr=["dof_.*"],  # matches all 20 "dof_*" joints
             effort_limit_sim=150.0,
             velocity_limit_sim=20.0,
             stiffness=120.0,
@@ -69,11 +79,14 @@ class KbotSceneCfg(InteractiveSceneCfg):
     """Designs the scene."""
 
     # Ground-plane
-    ground = AssetBaseCfg(prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg())
+    ground = AssetBaseCfg(
+        prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg()
+    )
 
     # lights
     dome_light = AssetBaseCfg(
-        prim_path="/World/Light", spawn=sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75))
+        prim_path="/World/Light",
+        spawn=sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)),
     )
 
     #  Kbot

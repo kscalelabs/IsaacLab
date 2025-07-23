@@ -1,18 +1,25 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
+"""Rough terrain locomotion environment config for kbot."""
 
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
-from isaaclab.managers import ObservationGroupCfg, ObservationTermCfg, RewardTermCfg, SceneEntityCfg, TerminationTermCfg, ObservationTermCfg as ObsTerm
+from isaaclab.managers import (
+    ObservationGroupCfg,
+    ObservationTermCfg,
+    RewardTermCfg,
+    SceneEntityCfg,
+    TerminationTermCfg,
+    ObservationTermCfg as ObsTerm,
+)
 from isaaclab.sensors import ImuCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
-from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg, RewardsCfg
+from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
+    LocomotionVelocityRoughEnvCfg,
+    RewardsCfg,
+)
 
 from isaaclab_assets import KBOT_CFG
 
@@ -29,16 +36,20 @@ class KBotRewards(RewardsCfg):
         params={"command_name": "base_velocity", "std": 0.5},
     )
     track_ang_vel_z_exp = RewTerm(
-        func=mdp.track_ang_vel_z_world_exp, weight=2.0, params={"command_name": "base_velocity", "std": 0.5}
+        func=mdp.track_ang_vel_z_world_exp,
+        weight=2.0,
+        params={"command_name": "base_velocity", "std": 0.5},
     )
-
 
     feet_air_time = RewTerm(
         func=mdp.feet_air_time_positive_biped,
         weight=0.25,
         params={
             "command_name": "base_velocity",
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]),
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+            ),
             "threshold": 0.4,
         },
     )
@@ -46,8 +57,13 @@ class KBotRewards(RewardsCfg):
         func=mdp.feet_slide,
         weight=-0.1,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]),
-            "asset_cfg":  SceneEntityCfg("robot",           body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]),
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+            ),
+            "asset_cfg": SceneEntityCfg(
+                "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+            ),
         },
     )
 
@@ -55,8 +71,11 @@ class KBotRewards(RewardsCfg):
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot",
-                                           joint_names=["dof_left_ankle_02", "dof_right_ankle_02"])},
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", joint_names=["dof_left_ankle_02", "dof_right_ankle_02"]
+            )
+        },
     )
 
     joint_deviation_hip = RewTerm(
@@ -66,8 +85,10 @@ class KBotRewards(RewardsCfg):
             "asset_cfg": SceneEntityCfg(
                 "robot",
                 joint_names=[
-                    "dof_left_hip_yaw_03",  "dof_right_hip_yaw_03",
-                    "dof_left_hip_roll_03", "dof_right_hip_roll_03",
+                    "dof_left_hip_yaw_03",
+                    "dof_right_hip_yaw_03",
+                    "dof_left_hip_roll_03",
+                    "dof_right_hip_roll_03",
                 ],
             )
         },
@@ -81,29 +102,42 @@ class KBotRewards(RewardsCfg):
                 "robot",
                 joint_names=[
                     # left arm
-                    "dof_left_shoulder_pitch_03", "dof_left_shoulder_roll_03",
-                    "dof_left_shoulder_yaw_02",   "dof_left_elbow_02",
+                    "dof_left_shoulder_pitch_03",
+                    "dof_left_shoulder_roll_03",
+                    "dof_left_shoulder_yaw_02",
+                    "dof_left_elbow_02",
                     # right arm
-                    "dof_right_shoulder_pitch_03","dof_right_shoulder_roll_03",
-                    "dof_right_shoulder_yaw_02",  "dof_right_elbow_02",
+                    "dof_right_shoulder_pitch_03",
+                    "dof_right_shoulder_roll_03",
+                    "dof_right_shoulder_yaw_02",
+                    "dof_right_elbow_02",
                 ],
             )
         },
     )
+
 
 @configclass
 class KBotObservations:
     @configclass
     class CriticCfg(ObservationGroupCfg):
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
+        base_lin_vel = ObsTerm(
+            func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1)
+        )
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2)
+        )
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
-        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
-        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        velocity_commands = ObsTerm(
+            func=mdp.generated_commands, params={"command_name": "base_velocity"}
+        )
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01)
+        )
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
         height_scan = ObsTerm(
@@ -119,14 +153,14 @@ class KBotObservations:
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
         imu_ang_vel = ObsTerm(
-            func=mdp.imu_ang_vel, 
-            params={"asset_cfg": SceneEntityCfg("imu")}, 
-            noise=Unoise(n_min=-0.1, n_max=0.1)
+            func=mdp.imu_ang_vel,
+            params={"asset_cfg": SceneEntityCfg("imu")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
         )
         imu_lin_acc = ObsTerm(
-            func=mdp.imu_lin_acc, 
-            params={"asset_cfg": SceneEntityCfg("imu")}, 
-            noise=Unoise(n_min=-0.1, n_max=0.1)
+            func=mdp.imu_lin_acc,
+            params={"asset_cfg": SceneEntityCfg("imu")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
         )
 
     @configclass
@@ -137,20 +171,24 @@ class KBotObservations:
             params={"asset_cfg": SceneEntityCfg("imu")},
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
-        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
-        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        velocity_commands = ObsTerm(
+            func=mdp.generated_commands, params={"command_name": "base_velocity"}
+        )
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01)
+        )
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
-        # IMU observations  
+        # IMU observations
         imu_ang_vel = ObsTerm(
-            func=mdp.imu_ang_vel, 
-            params={"asset_cfg": SceneEntityCfg("imu")}, 
-            noise=Unoise(n_min=-0.1, n_max=0.1)
+            func=mdp.imu_ang_vel,
+            params={"asset_cfg": SceneEntityCfg("imu")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
         )
         # No linear acceleration for now
         # imu_lin_acc = ObsTerm(
-        #     func=mdp.imu_lin_acc, 
-        #     params={"asset_cfg": SceneEntityCfg("imu")}, 
+        #     func=mdp.imu_lin_acc,
+        #     params={"asset_cfg": SceneEntityCfg("imu")},
         #     noise=Unoise(n_min=-0.1, n_max=0.1)
         # )
 
@@ -161,6 +199,7 @@ class KBotObservations:
     # Observation groups:
     critic: CriticCfg = CriticCfg()
     policy: PolicyCfg = PolicyCfg()
+
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
@@ -210,9 +249,13 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "robot",
             joint_names=[
                 # hips + knees only
-                "dof_left_hip_pitch_04",  "dof_left_hip_roll_03",  "dof_left_hip_yaw_03",
+                "dof_left_hip_pitch_04",
+                "dof_left_hip_roll_03",
+                "dof_left_hip_yaw_03",
                 "dof_left_knee_04",
-                "dof_right_hip_pitch_04", "dof_right_hip_roll_03", "dof_right_hip_yaw_03",
+                "dof_right_hip_pitch_04",
+                "dof_right_hip_roll_03",
+                "dof_right_hip_yaw_03",
                 "dof_right_knee_04",
             ],
         )
@@ -221,10 +264,16 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "robot",
             joint_names=[
                 # hips + knees + ankles
-                "dof_left_hip_pitch_04",  "dof_left_hip_roll_03",  "dof_left_hip_yaw_03",
-                "dof_left_knee_04",       "dof_left_ankle_02",
-                "dof_right_hip_pitch_04", "dof_right_hip_roll_03", "dof_right_hip_yaw_03",
-                "dof_right_knee_04",      "dof_right_ankle_02",
+                "dof_left_hip_pitch_04",
+                "dof_left_hip_roll_03",
+                "dof_left_hip_yaw_03",
+                "dof_left_knee_04",
+                "dof_left_ankle_02",
+                "dof_right_hip_pitch_04",
+                "dof_right_hip_roll_03",
+                "dof_right_hip_yaw_03",
+                "dof_right_knee_04",
+                "dof_right_ankle_02",
             ],
         )
 
@@ -253,9 +302,8 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "RS03_3",
             "KC_C_202R",
             "KC_C_401R_R_UpForearmDrive",
-            "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop"
+            "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
         ]
-
 
 
 @configclass
