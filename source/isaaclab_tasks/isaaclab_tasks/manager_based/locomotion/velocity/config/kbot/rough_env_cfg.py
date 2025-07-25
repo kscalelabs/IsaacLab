@@ -332,6 +332,10 @@ class KBotObservations:
         root_ang_vel_w = ObsTerm(
             func=mdp.root_ang_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001)
         )
+        
+        # No noise for the critic
+        def __post_init__(self):
+            self.enable_corruption = False
 
     @configclass
     class PolicyCfg(ObservationGroupCfg):
@@ -339,15 +343,15 @@ class KBotObservations:
         projected_gravity = ObsTerm(
             func=mdp.imu_projected_gravity,
             params={"asset_cfg": SceneEntityCfg("imu")},
-            noise=Unoise(n_min=-0.05, n_max=0.05),
+            noise=Unoise(n_min=-0.1, n_max=0.1),
         )
         velocity_commands = ObsTerm(
             func=mdp.generated_commands, params={"command_name": "base_velocity"}
         )
         joint_pos = ObsTerm(
-            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01)
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.1, n_max=0.1)
         )
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-2.5, n_max=2.5))
         # IMU observations
         imu_ang_vel = ObsTerm(
             func=mdp.imu_ang_vel,
@@ -526,10 +530,16 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             },
         )
 
-        # UNTESTED
-        # # 6. JOINT INITIALIZATION RANDOMIZATION (Enable meaningful ranges)
-        # self.events.reset_robot_joints.params["position_range"] = (-0.15, 0.15)  # ±15% around default
-        # self.events.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)   # Small initial velocities
+        # Joint initialization randomization
+        self.events.reset_robot_joints.params["position_range"] = (-0.2, 0.2)  # ±20% around default
+        self.events.reset_robot_joints.params["velocity_range"] = (-2.0, 2.0)   # Small initial velocities
+
+        # This is needed to randomize joint velocities since the default is to scale by zero
+        self.events.reset_robot_joints.func = mdp.reset_joints_by_offset
+
+        # No randomization of joint positions 
+        # self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
+        # self.events.reset_robot_joints.params["velocity_range"] = (-0.0, 0.0)
 
         # UNTESTED
         # # 7. EXTERNAL FORCE DISTURBANCES (Re-enable with random forces)
@@ -551,19 +561,21 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         }
 
         # Keep other existing randomization settings
-        self.events.add_base_mass = None
-        self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "velocity_range": {
-                "x": (0.0, 0.0),
-                "y": (0.0, 0.0),
-                "z": (0.0, 0.0),
-                "roll": (0.0, 0.0),
-                "pitch": (0.0, 0.0),
-                "yaw": (0.0, 0.0),
+                "x": (-0.3, 0.3),
+                "y": (-0.3, 0.3),
+                "z": (-0.1, 0.1),
+                "roll": (-0.2, 0.2),
+                "pitch": (-0.2, 0.2),
+                "yaw": (-0.5, 0.5),
             },
         }
+        
+        
+        # I think this is because the "base" is not a rigid body in the robot asset
+        self.events.add_base_mass = None
         self.events.base_com = None
 
         # UNTESTED
@@ -664,7 +676,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "KC_D_102L_L_Hip_Yoke_Drive",
             "RS03_5",
             "KC_D_301L_L_Femur_Lower_Drive",
-            "KC_D_401L_L_Shin_Drive",
+            # "KC_D_401L_L_Shin_Drive",
             "KC_C_104L_PitchHardstopDriven",
             "RS03_6",
             "KC_C_202L",
@@ -673,7 +685,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "KC_D_102R_R_Hip_Yoke_Drive",
             "RS03_4",
             "KC_D_301R_R_Femur_Lower_Drive",
-            "KC_D_401R_R_Shin_Drive",
+            # "KC_D_401R_R_Shin_Drive",
             "KC_C_104R_PitchHardstopDriven",
             "RS03_3",
             "KC_C_202R",
