@@ -460,7 +460,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "asset_cfg": SceneEntityCfg(
                     "robot",
                     body_names=[
-                        # "Torso_Side_Right",
+                        "Torso_Side_Right",
                         "KC_D_102L_L_Hip_Yoke_Drive",
                         "KC_C_104L_PitchHardstopDriven",
                         "KC_D_102R_R_Hip_Yoke_Drive",
