@@ -1,5 +1,8 @@
 """Rough terrain locomotion environment config for kbot."""
 
+import torch
+
+from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
@@ -85,8 +88,8 @@ KBOT_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
 
 
 def velocity_push_curriculum(
-    env,
-    env_ids,
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
     min_push: float,
     max_push: float,
     curriculum_start_step: int,
@@ -416,11 +419,130 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             gravity_bias=(0.0, 0.0, 0.0),
         )
 
-        # Use velocity-based pushing instead of external forces
-        # First, remove external force torque event
-        self.events.base_external_force_torque = None
+        # Physics material randomization (friction with the floor)
+        self.events.physics_material = EventTerm(
+            func=mdp.randomize_rigid_body_material,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+                ),
+                "static_friction_range": (0.1, 2.0),
+                "dynamic_friction_range": (0.1, 2.0),
+                "restitution_range": (0.0, 0.1),
+                "num_buckets": 64,
+                "make_consistent": True,  # Ensure dynamic friction is always less than static friction
+            },
+        )
 
-        # Configure push_robot event
+        # # Base mass randomization BUG it does not seem to affect performance???
+        # self.events.add_base_mass = EventTerm(
+        #     func=mdp.randomize_rigid_body_mass,
+        #     mode="reset",
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("robot", body_names="Torso_Side_Right"),
+        #         "mass_distribution_params": (0.001, 100.2),
+        #         "operation": "scale",
+        #         "distribution": "uniform",
+        #         "recompute_inertia": True,
+        #     },
+        # )
+
+        # Individual link mass randomization for robustness
+        self.events.add_limb_masses = EventTerm(
+            func=mdp.randomize_rigid_body_mass,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=[
+                        # "Torso_Side_Right",
+                        "KC_D_102L_L_Hip_Yoke_Drive",
+                        "KC_C_104L_PitchHardstopDriven",
+                        "KC_D_102R_R_Hip_Yoke_Drive",
+                        "KC_C_104R_PitchHardstopDriven",
+                        "RS03_5",
+                        "RS03_6",
+                        "RS03_4",
+                        "RS03_3",
+                        "KC_D_301L_L_Femur_Lower_Drive",
+                        "KC_C_202L",
+                        "KC_D_301R_R_Femur_Lower_Drive",
+                        "KC_C_202R",
+                        "KC_D_401L_L_Shin_Drive",
+                        "KC_C_401L_L_UpForearmDrive",
+                        "KC_D_401R_R_Shin_Drive",
+                        "KC_C_401R_R_UpForearmDrive",
+                        "KB_D_501L_L_LEG_FOOT",
+                        "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+                        "KB_D_501R_R_LEG_FOOT",
+                        "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+                    ],
+                ),
+                "mass_distribution_params": (0.5, 1.5),  # Limb mass variations
+                "operation": "scale",
+                "distribution": "uniform",
+                "recompute_inertia": True,
+            },
+        )
+
+        # # 3. CENTER OF MASS RANDOMIZATION BUG
+        # self.events.base_com = EventTerm(
+        #     func=mdp.randomize_rigid_body_com,
+        #     mode="startup",
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("robot", body_names="Torso_Side_Right"),
+        #         "com_range": {
+        #             "x": (-10.15, 10.03),   # metres
+        #             "y": (-10.03, 10.03),
+        #             "z": (-10.02, 10.02),
+        #         },
+        #     },
+        # )
+
+        # 4. ACTUATOR GAIN RANDOMIZATION
+        self.events.randomize_actuator_gains = EventTerm(
+            func=mdp.randomize_actuator_gains,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+                "stiffness_distribution_params": (0.5, 1.5),  # ±50% stiffness variation
+                "damping_distribution_params": (0.5, 1.5),  # ±50% damping variation
+                "operation": "scale",
+                "distribution": "uniform",
+            },
+        )
+
+        # 5. JOINT PARAMETER RANDOMIZATION
+        self.events.randomize_joint_properties = EventTerm(
+            func=mdp.randomize_joint_parameters,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+                "friction_distribution_params": (0.0, 1.5),  # Joint friction
+                "armature_distribution_params": (0.4, 1.5),  # Joint armature/inertia
+                "operation": "scale",
+                "distribution": "uniform",
+            },
+        )
+
+        # UNTESTED
+        # # 6. JOINT INITIALIZATION RANDOMIZATION (Enable meaningful ranges)
+        # self.events.reset_robot_joints.params["position_range"] = (-0.15, 0.15)  # ±15% around default
+        # self.events.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)   # Small initial velocities
+
+        # UNTESTED
+        # # 7. EXTERNAL FORCE DISTURBANCES (Re-enable with random forces)
+        # self.events.base_external_force_torque = EventTerm(
+        #     func=mdp.apply_external_force_torque,
+        #     mode="reset",
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+        #         "force_range": (-30.0, 30.0),   # Random forces in N
+        #         "torque_range": (-15.0, 15.0),  # Random torques in Nm
+        #     },
+        # )
+
         self.events.push_robot.mode = "interval"
         self.events.push_robot.interval_range_s = (5.0, 15.0)
         self.events.push_robot.params["velocity_range"] = {
@@ -443,6 +565,55 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             },
         }
         self.events.base_com = None
+
+        # UNTESTED
+        # # 8. ENHANCED VELOCITY PUSHING
+        # self.events.push_robot.mode = "interval"
+        # self.events.push_robot.interval_range_s = (3.0, 8.0)  # More frequent pushes
+        # self.events.push_robot.params["velocity_range"] = {
+        #     "x": (-0.5, 0.5),  # Start with higher base velocity
+        #     "y": (-0.3, 0.3),
+        # }
+
+        # UNTESTED
+        # # 9. GRAVITY RANDOMIZATION
+        # self.events.randomize_gravity = EventTerm(
+        #     func=mdp.randomize_physics_scene_gravity,
+        #     mode="startup",
+        #     params={
+        #         "gravity_distribution_params": ([-9.81, -9.81, -10.5], [-9.81, -9.81, -9.0]),  # Gravity variations
+        #         "operation": "abs",
+        #         "distribution": "uniform",
+        #     },
+        # )
+
+        # UNTESTED
+        # # 10. ENHANCED INITIAL POSE RANDOMIZATION
+        # self.events.reset_base.params = {
+        #     "pose_range": {"x": (-0.8, 0.8), "y": (-0.8, 0.8), "yaw": (-3.14, 3.14)},
+        #     "velocity_range": {
+        #         "x": (-0.3, 0.3),
+        #         "y": (-0.3, 0.3),
+        #         "z": (-0.1, 0.1),
+        #         "roll": (-0.2, 0.2),
+        #         "pitch": (-0.2, 0.2),
+        #         "yaw": (-0.5, 0.5),
+        #     },
+        # }
+
+        # UNTESTED
+        # # 11. COLLIDER PROPERTY RANDOMIZATION
+        # self.events.randomize_collider_properties = EventTerm(
+        #     func=mdp.randomize_rigid_body_collider_offsets,
+        #     mode="startup",
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+        #         "rest_offset_distribution_params": (-0.002, 0.002),     # Contact behavior variation
+        #         "contact_offset_distribution_params": (0.001, 0.005),   # Contact detection variation
+        #         "operation": "add",
+        #         "distribution": "uniform",
+        #     },
+        # )
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
