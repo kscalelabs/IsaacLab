@@ -1,34 +1,95 @@
 """Rough terrain locomotion environment config for kbot."""
 
+from typing import Dict, Optional, Tuple
+
 import torch
 
+import isaaclab.terrains as terrain_gen
+import isaaclab.utils.math as math_utils
+import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from isaaclab.envs import ManagerBasedEnv
-from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
-from isaaclab.managers import TerminationTermCfg as DoneTerm
-from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import (
+    CurriculumTermCfg as CurrTerm,
+    EventTermCfg as EventTerm,
     ObservationGroupCfg,
     ObservationTermCfg,
+    ObservationTermCfg as ObsTerm,
     RewardTermCfg,
+    RewardTermCfg as RewTerm,
     SceneEntityCfg,
     TerminationTermCfg,
-    ObservationTermCfg as ObsTerm,
-    CurriculumTermCfg as CurrTerm,
+    TerminationTermCfg as DoneTerm,
 )
 from isaaclab.sensors import ImuCfg
-from isaaclab.utils import configclass
-from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
-import isaaclab.terrains as terrain_gen
 from isaaclab.terrains.terrain_generator_cfg import TerrainGeneratorCfg
-
-import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
+from isaaclab.utils import configclass
+from isaaclab.utils.math import quat_from_euler_xyz
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
+from isaaclab_assets import KBOT_CFG
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     LocomotionVelocityRoughEnvCfg,
     RewardsCfg,
 )
 
-from isaaclab_assets import KBOT_CFG
+
+def randomize_imu_mount(
+    env: ManagerBasedEnv,
+    env_ids: Optional[torch.Tensor],
+    sensor_cfg: SceneEntityCfg,
+    pos_range: Dict[str, Tuple[float, float]],
+    rot_range: Dict[str, Tuple[float, float]],
+) -> Dict[str, float]:
+    """Helper to randomise the IMU's local pose on every env reset."""
+    imu_sensor = env.scene.sensors[sensor_cfg.name]
+
+    # Get the envs which reset
+    env_indices = (
+        env_ids
+        if env_ids is not None
+        else torch.arange(imu_sensor.num_instances, device=env.device)
+    )
+    num_envs_to_update = len(env_indices)
+
+    def sample_uniform(lo: float, hi: float) -> torch.Tensor:
+        """Return `num_envs_to_update` samples from [lo, hi)."""
+        return (hi - lo) * torch.rand(num_envs_to_update, device=env.device) + lo
+
+    # Sample translation offsets
+    position_offsets: torch.Tensor = torch.stack(
+        [
+            sample_uniform(*pos_range["x"]),
+            sample_uniform(*pos_range["y"]),
+            sample_uniform(*pos_range["z"]),
+        ],
+        dim=-1,  # shape = (N, 3)
+    )
+
+    # Sample orientation offsets
+    roll_offsets = sample_uniform(*rot_range["roll"])
+    pitch_offsets = sample_uniform(*rot_range["pitch"])
+    yaw_offsets = sample_uniform(*rot_range["yaw"])
+
+    quaternion_offsets: torch.Tensor = quat_from_euler_xyz(
+        roll_offsets, pitch_offsets, yaw_offsets  # shape = (N, 4)
+    )
+
+    # Write the offsets into the sensor’s internal buffers
+    imu_sensor._offset_pos_b[env_indices] = position_offsets
+    imu_sensor._offset_quat_b[env_indices] = quaternion_offsets
+
+    # Return summary scalars for logging / curriculum
+    # Not sure if this is needed
+    mean_offset_cm: float = (position_offsets.norm(dim=-1).mean() * 100.0).item()
+    mean_tilt_deg: float = (
+        torch.rad2deg(torch.acos(quaternion_offsets[:, 0].clamp(-1.0, 1.0)))
+        .mean()
+        .item()
+    )
+
+    return {
+        "imu_offset_cm": mean_offset_cm,
+        "imu_tilt_deg": mean_tilt_deg,
+    }
 
 
 # Adds flat terrain to the terrain generator
@@ -332,7 +393,7 @@ class KBotObservations:
         root_ang_vel_w = ObsTerm(
             func=mdp.root_ang_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001)
         )
-        
+
         # No noise for the critic
         def __post_init__(self):
             self.enable_corruption = False
@@ -343,15 +404,15 @@ class KBotObservations:
         projected_gravity = ObsTerm(
             func=mdp.imu_projected_gravity,
             params={"asset_cfg": SceneEntityCfg("imu")},
-            noise=Unoise(n_min=-0.1, n_max=0.1),
+            noise=Unoise(n_min=-0.05, n_max=0.05),
         )
         velocity_commands = ObsTerm(
             func=mdp.generated_commands, params={"command_name": "base_velocity"}
         )
         joint_pos = ObsTerm(
-            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.1, n_max=0.1)
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.05, n_max=0.05)
         )
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-2.5, n_max=2.5))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-0.5, n_max=0.5))
         # IMU observations
         imu_ang_vel = ObsTerm(
             func=mdp.imu_ang_vel,
@@ -421,6 +482,9 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             update_period=0.0,
             debug_vis=True,
             gravity_bias=(0.0, 0.0, 0.0),
+            offset=ImuCfg.OffsetCfg(
+                pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)  # m  # w-xyz quaternion
+            ),
         )
 
         # Physics material randomization (friction with the floor)
@@ -438,19 +502,6 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "make_consistent": True,  # Ensure dynamic friction is always less than static friction
             },
         )
-
-        # # Base mass randomization BUG it does not seem to affect performance???
-        # self.events.add_base_mass = EventTerm(
-        #     func=mdp.randomize_rigid_body_mass,
-        #     mode="reset",
-        #     params={
-        #         "asset_cfg": SceneEntityCfg("robot", body_names="Torso_Side_Right"),
-        #         "mass_distribution_params": (0.001, 100.2),
-        #         "operation": "scale",
-        #         "distribution": "uniform",
-        #         "recompute_inertia": True,
-        #     },
-        # )
 
         # Individual link mass randomization for robustness
         self.events.add_limb_masses = EventTerm(
@@ -483,75 +534,48 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                         "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
                     ],
                 ),
-                "mass_distribution_params": (0.5, 1.5),  # Limb mass variations
+                "mass_distribution_params": (0.8, 1.2),  # Limb mass variations
                 "operation": "scale",
                 "distribution": "uniform",
                 "recompute_inertia": True,
             },
         )
 
-        # # 3. CENTER OF MASS RANDOMIZATION BUG
-        # self.events.base_com = EventTerm(
-        #     func=mdp.randomize_rigid_body_com,
-        #     mode="startup",
-        #     params={
-        #         "asset_cfg": SceneEntityCfg("robot", body_names="Torso_Side_Right"),
-        #         "com_range": {
-        #             "x": (-10.15, 10.03),   # metres
-        #             "y": (-10.03, 10.03),
-        #             "z": (-10.02, 10.02),
-        #         },
-        #     },
-        # )
-
-        # 4. ACTUATOR GAIN RANDOMIZATION
+        # PD gains randomization
         self.events.randomize_actuator_gains = EventTerm(
             func=mdp.randomize_actuator_gains,
             mode="reset",
             params={
                 "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-                "stiffness_distribution_params": (0.5, 1.5),  # ±50% stiffness variation
-                "damping_distribution_params": (0.5, 1.5),  # ±50% damping variation
+                "stiffness_distribution_params": (0.8, 1.2),
+                "damping_distribution_params": (0.8, 1.2),
                 "operation": "scale",
                 "distribution": "uniform",
             },
         )
 
-        # 5. JOINT PARAMETER RANDOMIZATION
+        # Actuator friction and armature randomization
         self.events.randomize_joint_properties = EventTerm(
             func=mdp.randomize_joint_parameters,
             mode="reset",
             params={
                 "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-                "friction_distribution_params": (0.0, 1.5),  # Joint friction
-                "armature_distribution_params": (0.4, 1.5),  # Joint armature/inertia
+                "friction_distribution_params": (0.0, 0.3),
+                "armature_distribution_params": (0.8, 1.2),
                 "operation": "scale",
                 "distribution": "uniform",
             },
         )
 
         # Joint initialization randomization
-        self.events.reset_robot_joints.params["position_range"] = (-0.2, 0.2)  # ±20% around default
-        self.events.reset_robot_joints.params["velocity_range"] = (-2.0, 2.0)   # Small initial velocities
-
-        # This is needed to randomize joint velocities since the default is to scale by zero
+        # Reset by offset is needed since the default is to scale by zero
+        self.events.reset_robot_joints.params["position_range"] = (-0.2, 0.2)
+        self.events.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)
         self.events.reset_robot_joints.func = mdp.reset_joints_by_offset
 
-        # No randomization of joint positions 
+        # # No randomization of joint positions
         # self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         # self.events.reset_robot_joints.params["velocity_range"] = (-0.0, 0.0)
-
-        # UNTESTED
-        # # 7. EXTERNAL FORCE DISTURBANCES (Re-enable with random forces)
-        # self.events.base_external_force_torque = EventTerm(
-        #     func=mdp.apply_external_force_torque,
-        #     mode="reset",
-        #     params={
-        #         "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-        #         "force_range": (-30.0, 30.0),   # Random forces in N
-        #         "torque_range": (-15.0, 15.0),  # Random torques in Nm
-        #     },
-        # )
 
         self.events.push_robot.mode = "interval"
         self.events.push_robot.interval_range_s = (5.0, 15.0)
@@ -560,7 +584,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "y": (-0.01, 0.01),
         }
 
-        # Keep other existing randomization settings
+        # Base reset randomization
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "velocity_range": {
@@ -569,63 +593,45 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "z": (-0.1, 0.1),
                 "roll": (-0.2, 0.2),
                 "pitch": (-0.2, 0.2),
-                "yaw": (-0.5, 0.5),
+                "yaw": (-0.2, 0.2),
             },
         }
-        
-        
+
+        # # No reset randomization
+        # self.events.reset_base.params = {
+        #     "pose_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "yaw": (-0.0, 0.0)},
+        #     "velocity_range": {
+        #         "x": (-0.0, 0.0),
+        #         "y": (-0.0, 0.0),
+        #         "z": (-0.0, 0.0),
+        #         "roll": (-0.0, 0.0),
+        #         "pitch": (-0.0, 0.0),
+        #         "yaw": (-0.0, 0.0),
+        #     },
+        # }
+
+        # IMU offset pos and rot randomization
+        self.events.randomize_imu_mount = EventTerm(
+            func=randomize_imu_mount,  # helper above
+            mode="reset",
+            params={
+                "sensor_cfg": SceneEntityCfg("imu"),
+                "pos_range": {
+                    "x": (-0.05, 0.05),
+                    "y": (-0.05, 0.05),
+                    "z": (-0.05, 0.05),
+                },
+                "rot_range": {
+                    "roll": (-0.1, 0.1),
+                    "pitch": (-0.1, 0.1),
+                    "yaw": (-0.1, 0.1),
+                },
+            },
+        )
+
         # I think this is because the "base" is not a rigid body in the robot asset
         self.events.add_base_mass = None
         self.events.base_com = None
-
-        # UNTESTED
-        # # 8. ENHANCED VELOCITY PUSHING
-        # self.events.push_robot.mode = "interval"
-        # self.events.push_robot.interval_range_s = (3.0, 8.0)  # More frequent pushes
-        # self.events.push_robot.params["velocity_range"] = {
-        #     "x": (-0.5, 0.5),  # Start with higher base velocity
-        #     "y": (-0.3, 0.3),
-        # }
-
-        # UNTESTED
-        # # 9. GRAVITY RANDOMIZATION
-        # self.events.randomize_gravity = EventTerm(
-        #     func=mdp.randomize_physics_scene_gravity,
-        #     mode="startup",
-        #     params={
-        #         "gravity_distribution_params": ([-9.81, -9.81, -10.5], [-9.81, -9.81, -9.0]),  # Gravity variations
-        #         "operation": "abs",
-        #         "distribution": "uniform",
-        #     },
-        # )
-
-        # UNTESTED
-        # # 10. ENHANCED INITIAL POSE RANDOMIZATION
-        # self.events.reset_base.params = {
-        #     "pose_range": {"x": (-0.8, 0.8), "y": (-0.8, 0.8), "yaw": (-3.14, 3.14)},
-        #     "velocity_range": {
-        #         "x": (-0.3, 0.3),
-        #         "y": (-0.3, 0.3),
-        #         "z": (-0.1, 0.1),
-        #         "roll": (-0.2, 0.2),
-        #         "pitch": (-0.2, 0.2),
-        #         "yaw": (-0.5, 0.5),
-        #     },
-        # }
-
-        # UNTESTED
-        # # 11. COLLIDER PROPERTY RANDOMIZATION
-        # self.events.randomize_collider_properties = EventTerm(
-        #     func=mdp.randomize_rigid_body_collider_offsets,
-        #     mode="startup",
-        #     params={
-        #         "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-        #         "rest_offset_distribution_params": (-0.002, 0.002),     # Contact behavior variation
-        #         "contact_offset_distribution_params": (0.001, 0.005),   # Contact detection variation
-        #         "operation": "add",
-        #         "distribution": "uniform",
-        #     },
-        # )
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
