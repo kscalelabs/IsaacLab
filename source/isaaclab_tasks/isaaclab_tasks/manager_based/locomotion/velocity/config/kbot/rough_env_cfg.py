@@ -374,11 +374,11 @@ class KBotObservations:
         # Joint positions and velocities with less noise (privileged accurate state)
         joint_pos_accurate = ObsTerm(
             func=mdp.joint_pos_rel,
-            noise=Unoise(n_min=-0.0001, n_max=0.0001),  # Much less noise than policy
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),
         )
         joint_vel_accurate = ObsTerm(
             func=mdp.joint_vel_rel,
-            noise=Unoise(n_min=-0.0001, n_max=0.0001),  # Much less noise than policy
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),
         )
 
         # Base position (full pose information - privileged)
@@ -483,7 +483,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             debug_vis=True,
             gravity_bias=(0.0, 0.0, 0.0),
             offset=ImuCfg.OffsetCfg(
-                pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)  # m  # w-xyz quaternion
+                pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)  # meters, quaternion
             ),
         )
 
@@ -534,7 +534,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                         "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
                     ],
                 ),
-                "mass_distribution_params": (0.8, 1.2),  # Limb mass variations
+                "mass_distribution_params": (0.8, 1.2),
                 "operation": "scale",
                 "distribution": "uniform",
                 "recompute_inertia": True,
@@ -612,7 +612,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # IMU offset pos and rot randomization
         self.events.randomize_imu_mount = EventTerm(
-            func=randomize_imu_mount,  # helper above
+            func=randomize_imu_mount,
             mode="reset",
             params={
                 "sensor_cfg": SceneEntityCfg("imu"),
