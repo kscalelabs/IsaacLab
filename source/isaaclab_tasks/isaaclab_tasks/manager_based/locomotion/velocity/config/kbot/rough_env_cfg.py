@@ -292,6 +292,20 @@ class KBotRewards(RewardsCfg):
         },
     )
 
+    # No stomping reward
+    # Foot-impact regulariser (discourages stomping)
+    foot_impact_penalty = RewTerm(
+        func=mdp.contact_forces,
+        weight=-1.5e-3,
+        params={
+            "threshold": 358.0,  # Manually checked static load of the kbot while standing
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+            ),
+        },
+    )
+
 
 @configclass
 class KBotObservations:
