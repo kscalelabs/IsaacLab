@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import math
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.actuators import DelayedPDActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 
@@ -180,14 +180,17 @@ _JOINT_META = {
 
 
 # Build one ImplicitActuatorCfg per joint
+# If sim dt is 0.005 seconds (5 milliseconds), then max_delay=8 means 40ms delay
 _ACTUATORS = {
-    jn: ImplicitActuatorCfg(
+    jn: DelayedPDActuatorCfg(
         joint_names_expr=[jn],
         effort_limit=meta["torque"],
         velocity_limit=meta["vmax"],
         stiffness={jn: meta["kp"]},
         damping={jn: meta["kd"]},
         armature=meta["arm"],
+        min_delay=0,
+        max_delay=4, 
     )
     for jn, meta in _JOINT_META.items()
 }
