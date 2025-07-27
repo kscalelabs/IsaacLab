@@ -317,3 +317,50 @@ def track_ang_vel_z_exp(
     # compute the error
     ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_b[:, 2])
     return torch.exp(-ang_vel_error / std**2)
+
+
+def body_distance_penalty(
+    env: ManagerBasedRLEnv,
+    min_distance: float,
+    asset_cfg: SceneEntityCfg,
+    body_a_names: list[str],
+    body_b_names: list[str],
+) -> torch.Tensor:
+    """Penalize when specific bodies get too close to each other.
+    
+    This function is useful for preventing collisions between specific body parts, 
+    such as foot-to-foot collisions or arm-leg collisions.
+    
+    Args:
+        env: The environment instance.
+        min_distance: The minimum allowed distance between bodies.
+        asset_cfg: The asset configuration containing the bodies.
+        body_a_names: List of names for the first set of bodies.
+        body_b_names: List of names for the second set of bodies.
+        
+    Returns:
+        A penalty tensor based on proximity violations. Shape is (num_envs,).
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: Articulation = env.scene[asset_cfg.name]
+    
+    # Get body indices for the specified body names
+    body_a_ids, _ = asset.find_bodies(body_a_names)
+    body_b_ids, _ = asset.find_bodies(body_b_names)
+    
+    # Get body positions in world frame
+    body_a_pos = asset.data.body_pos_w[:, body_a_ids]  # (num_envs, num_bodies_a, 3)
+    body_b_pos = asset.data.body_pos_w[:, body_b_ids]  # (num_envs, num_bodies_b, 3)
+    
+    # Compute pairwise distances between all body_a and body_b pairs
+    penalty = torch.zeros(env.num_envs, device=env.device)
+    
+    for i in range(len(body_a_ids)):
+        for j in range(len(body_b_ids)):
+            # Calculate distance between body_a[i] and body_b[j]
+            distance = torch.norm(body_a_pos[:, i] - body_b_pos[:, j], dim=1)
+            # Penalize when distance is below minimum
+            violation = torch.clamp(min_distance - distance, min=0.0)
+            penalty += violation
+    
+    return penalty

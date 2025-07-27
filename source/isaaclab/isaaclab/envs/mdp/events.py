@@ -508,7 +508,6 @@ def randomize_actuator_gains(
     The function samples random values from the given distribution parameters and applies the operation to the joint properties.
     It then sets the values into the actuator models. If the distribution parameters are not provided for a particular property,
     the function does not modify the property.
-
     .. tip::
         For implicit actuators, this function uses CPU tensors to assign the actuator gains into the simulation.
         In such cases, it is recommended to use this function only during the initialization of the environment.
@@ -614,6 +613,7 @@ def randomize_joint_parameters(
             operation=operation,
             distribution=distribution,
         )
+        # breakpoint()
         asset.write_joint_friction_coefficient_to_sim(
             friction_coeff[env_ids[:, None], joint_ids], joint_ids=joint_ids, env_ids=env_ids
         )

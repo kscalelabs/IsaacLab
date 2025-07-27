@@ -58,10 +58,41 @@ class KBotRoughRNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     empirical_normalization = False
     policy = RslRlPpoActorCriticRecurrentCfg(
         init_noise_std=1.0,
-        actor_hidden_dims=[512, 256],
-        critic_hidden_dims=[512, 256],
+        actor_hidden_dims=[256],
+        critic_hidden_dims=[256],
         activation="elu",
         rnn_type="gru",
+        rnn_hidden_dim=512,
+        rnn_num_layers=2,
+    )
+    algorithm = RslRlPpoAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.008,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=1.0e-3,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    )
+
+@configclass
+class KBotRoughLSTMPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 24
+    max_iterations = 3000
+    save_interval = 50
+    experiment_name = "kbot_rough_lstm"
+    empirical_normalization = False
+    policy = RslRlPpoActorCriticRecurrentCfg(
+        init_noise_std=1.0,
+        actor_hidden_dims=[256],
+        critic_hidden_dims=[256],
+        activation="elu",
+        rnn_type="lstm",
         rnn_hidden_dim=512,
         rnn_num_layers=2,
     )

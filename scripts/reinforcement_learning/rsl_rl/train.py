@@ -88,6 +88,8 @@ from isaaclab.utils.io import dump_pickle, dump_yaml
 
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
 
+from isaaclab.utils.assets import retrieve_file_path
+
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
@@ -145,8 +147,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env = multi_agent_to_single_agent(env)
 
     # save resume path before creating a new log_dir
+    resume_path = None
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
         resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
+    elif args_cli.checkpoint is not None:
+        # Load weights without resuming step counter
+        resume_path = retrieve_file_path(args_cli.checkpoint)
 
     # wrap for video recording
     if args_cli.video:
@@ -168,10 +174,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
     # load the checkpoint
-    if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
+    if resume_path:
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
         runner.load(resume_path)
+        
+        # If not resuming, reset the iteration counter
+        if not agent_cfg.resume:
+            runner.current_learning_iteration = 0
+            print("[INFO]: Loaded weights but reset step counter to 0")
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
