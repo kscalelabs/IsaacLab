@@ -190,7 +190,7 @@ _ACTUATORS = {
         damping={jn: meta["kd"]},
         armature=meta["arm"],
         min_delay=0,
-        max_delay=4, 
+        max_delay=0, 
     )
     for jn, meta in _JOINT_META.items()
 }
