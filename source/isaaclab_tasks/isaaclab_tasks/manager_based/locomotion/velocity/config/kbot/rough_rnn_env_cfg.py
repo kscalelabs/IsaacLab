@@ -473,6 +473,7 @@ class KBotObservations:
         )
         # No past actions for rnn
         # actions = ObsTerm(func=mdp.last_action)
+
         # No linear acceleration for now
         # imu_lin_acc = ObsTerm(
         #     func=mdp.imu_lin_acc,
@@ -501,7 +502,7 @@ class KBotCurriculumCfg:
         params={
             "min_push": 0.01,
             "max_push": 2.0,
-            "curriculum_start_step": 24 * 100,
+            "curriculum_start_step": 24 * 500,
             "curriculum_stop_step": 24 * 5500,
         },
     )
@@ -509,6 +510,8 @@ class KBotCurriculumCfg:
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+
+    enable_randomization: bool = True
     rewards: KBotRewards = KBotRewards()
     observations: KBotObservations = KBotObservations()
     curriculum: KBotCurriculumCfg = KBotCurriculumCfg()
@@ -626,10 +629,6 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)
         self.events.reset_robot_joints.func = mdp.reset_joints_by_offset
 
-        # # # No randomization of joint positions
-        # self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
-        # self.events.reset_robot_joints.params["velocity_range"] = (-0.0, 0.0)
-
         self.events.push_robot.mode = "interval"
         self.events.push_robot.interval_range_s = (5.0, 15.0)
         self.events.push_robot.params["velocity_range"] = {
@@ -649,19 +648,6 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "yaw": (-0.2, 0.2),
             },
         }
-
-        # # No reset randomization
-        # self.events.reset_base.params = {
-        #     "pose_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "yaw": (-0.0, 0.0)},
-        #     "velocity_range": {
-        #         "x": (-0.0, 0.0),
-        #         "y": (-0.0, 0.0),
-        #         "z": (-0.0, 0.0),
-        #         "roll": (-0.0, 0.0),
-        #         "pitch": (-0.0, 0.0),
-        #         "yaw": (-0.0, 0.0),
-        #     },
-        # }
 
         # IMU offset pos and rot randomization
         self.events.randomize_imu_mount = EventTerm(
@@ -752,6 +738,49 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "KC_C_401R_R_UpForearmDrive",
             "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
         ]
+
+        # Apply randomization settings based on flag
+        if not self.enable_randomization:
+            self._disable_randomization()
+
+    def _disable_randomization(self):
+        """Disable all randomization for easy early training."""
+
+        # Disable events
+        self.events.physics_material = None
+        self.events.add_limb_masses = None
+        self.events.randomize_actuator_gains = None
+        self.events.randomize_joint_properties = None
+        self.events.randomize_imu_mount = None
+
+        # Simple resets
+        self.events.reset_robot_joints.params.update(
+            {"position_range": (1.0, 1.0), "velocity_range": (0.0, 0.0)}
+        )
+        self.events.reset_robot_joints.func = mdp.reset_joints_by_scale
+        self.events.reset_base.params = {
+            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
+            "velocity_range": {
+                "x": (0.0, 0.0),
+                "y": (0.0, 0.0),
+                "z": (0.0, 0.0),
+                "roll": (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw": (0.0, 0.0),
+            },
+        }
+
+        # No pushes and push curriculum
+        self.events.push_robot = None
+        if hasattr(self.curriculum, "velocity_push_curriculum"):
+            self.curriculum.velocity_push_curriculum = None
+
+        # No actor observation noise
+        self.observations.policy.enable_corruption = False
+
+        # No foot impact penalty
+        if hasattr(self.rewards, "foot_impact_penalty"):
+            self.rewards.foot_impact_penalty = None
 
 
 @configclass
