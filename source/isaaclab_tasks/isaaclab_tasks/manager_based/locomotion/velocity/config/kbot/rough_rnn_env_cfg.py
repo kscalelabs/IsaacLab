@@ -501,7 +501,7 @@ class KBotCurriculumCfg:
         func=velocity_push_curriculum,
         params={
             "min_push": 0.01,
-            "max_push": 2.0,
+            "max_push": 0.5,
             "curriculum_start_step": 24 * 500,
             "curriculum_stop_step": 24 * 5500,
         },
