@@ -436,53 +436,53 @@ class KBotRewards(RewardsCfg):
     )
 
     # Foot contact force penalty - L2 penalty above threshold
-    foot_contact_force_l2 = RewTerm(
-        func=contact_forces_l2_penalty,
-        weight=-1.0e-9,
-        params={
-            "threshold": 380.0,
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
-            ),
-        },
-    )
-
-    # # No stomping reward
-    # # Foot-impact regulariser (discourages stomping)
-    # foot_impact_penalty = RewTerm(
-    #     func=mdp.contact_forces,
-    #     weight=-1.5e-3,
+    # foot_contact_force_l2 = RewTerm(
+    #     func=contact_forces_l2_penalty,
+    #     weight=-1.0e-7,
     #     params={
-    #         "threshold": 358.0,  # Manually checked static load of the kbot while standing
+    #         "threshold": 360.0,
     #         "sensor_cfg": SceneEntityCfg(
     #             "contact_forces",
-    #             body_names=[
-    #                 "KB_D_501L_L_LEG_FOOT",
-    #                 "KB_D_501R_R_LEG_FOOT",
-    #                 "Torso_Side_Right",
-    #                 "KC_D_102L_L_Hip_Yoke_Drive",
-    #                 "RS03_5",
-    #                 "KC_D_301L_L_Femur_Lower_Drive",
-    #                 "KC_D_401L_L_Shin_Drive",
-    #                 "KC_C_104L_PitchHardstopDriven",
-    #                 "RS03_6",
-    #                 "KC_C_202L",
-    #                 "KC_C_401L_L_UpForearmDrive",
-    #                 "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
-    #                 "KC_D_102R_R_Hip_Yoke_Drive",
-    #                 "RS03_4",
-    #                 "KC_D_301R_R_Femur_Lower_Drive",
-    #                 "KC_D_401R_R_Shin_Drive",
-    #                 "KC_C_104R_PitchHardstopDriven",
-    #                 "RS03_3",
-    #                 "KC_C_202R",
-    #                 "KC_C_401R_R_UpForearmDrive",
-    #                 "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
-    #             ],
+    #             body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
     #         ),
     #     },
     # )
+
+    # No stomping reward
+    # Foot-impact regulariser (discourages stomping)
+    foot_impact_penalty = RewTerm(
+        func=mdp.contact_forces,
+        weight=-1.5e-3,
+        params={
+            "threshold": 358.0,  # Manually checked static load of the kbot while standing
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=[
+                    "KB_D_501L_L_LEG_FOOT",
+                    "KB_D_501R_R_LEG_FOOT",
+                    "Torso_Side_Right",
+                    "KC_D_102L_L_Hip_Yoke_Drive",
+                    "RS03_5",
+                    "KC_D_301L_L_Femur_Lower_Drive",
+                    "KC_D_401L_L_Shin_Drive",
+                    "KC_C_104L_PitchHardstopDriven",
+                    "RS03_6",
+                    "KC_C_202L",
+                    "KC_C_401L_L_UpForearmDrive",
+                    "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+                    "KC_D_102R_R_Hip_Yoke_Drive",
+                    "RS03_4",
+                    "KC_D_301R_R_Femur_Lower_Drive",
+                    "KC_D_401R_R_Shin_Drive",
+                    "KC_C_104R_PitchHardstopDriven",
+                    "RS03_3",
+                    "KC_C_202R",
+                    "KC_C_401R_R_UpForearmDrive",
+                    "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+                ],
+            ),
+        },
+    )
 
 
 @configclass
@@ -620,7 +620,7 @@ class KBotObservations:
         # )
 
         def __post_init__(self):
-            self.enable_corruption = False
+            self.enable_corruption = True
             self.concatenate_terms = True
 
     # Observation groups:
@@ -775,7 +775,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Base reset randomization
         self.events.reset_base.params = {
-            "pose_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "yaw": (-0.0, 0.0)},
+            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "velocity_range": {
                 "x": (-0.3, 0.3),
                 "y": (-0.3, 0.3),
@@ -953,7 +953,6 @@ class KBotRoughEnvCfg_PLAY(KBotRoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (-1.5, 1.5)
         self.commands.base_velocity.ranges.lin_vel_y = (-1.5, 1.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
-        self.commands.base_velocity.rel_standing_envs = 0.2
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         # disable randomization for play
         self.observations.policy.enable_corruption = False
