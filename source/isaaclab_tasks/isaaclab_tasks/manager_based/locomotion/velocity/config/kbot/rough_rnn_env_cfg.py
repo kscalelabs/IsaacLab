@@ -744,7 +744,10 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             self._disable_randomization()
 
     def _disable_randomization(self):
-        """Disable all randomization for easy early training."""
+        """Disable all randomization for easy early training.
+
+        Use with command line arg: env.enable_randomization=false
+        """
 
         # Disable events
         self.events.physics_material = None
