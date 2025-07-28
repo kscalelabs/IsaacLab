@@ -1,345 +1,37 @@
 """Rough terrain locomotion environment config for kbot."""
 
-import math
 from typing import Dict, Optional, Tuple
+
 import torch
 
+import isaaclab.terrains as terrain_gen
+import isaaclab.utils.math as math_utils
+import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from isaaclab.envs import ManagerBasedEnv
-from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
-from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import (
+    CurriculumTermCfg as CurrTerm,
+    EventTermCfg as EventTerm,
     ObservationGroupCfg,
     ObservationTermCfg,
+    ObservationTermCfg as ObsTerm,
     RewardTermCfg,
+    RewardTermCfg as RewTerm,
     SceneEntityCfg,
     TerminationTermCfg,
-    ObservationTermCfg as ObsTerm,
-    EventTermCfg as EventTerm,
-    CurriculumTermCfg as CurrTerm,
+    TerminationTermCfg as DoneTerm,
 )
 from isaaclab.sensors import ImuCfg
-from isaaclab.utils import configclass
-from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
-from isaaclab.sensors import ContactSensorCfg
 from isaaclab.terrains.terrain_generator_cfg import TerrainGeneratorCfg
-import isaaclab.terrains as terrain_gen
+from isaaclab.utils import configclass
 from isaaclab.utils.math import quat_from_euler_xyz
-
-
-import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
+from isaaclab_assets import KBOT_CFG
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
-    CurriculumCfg,
     LocomotionVelocityRoughEnvCfg,
     RewardsCfg,
-    TerminationsCfg,
 )
-
 from isaaclab.envs import ManagerBasedRLEnv
 
-
-from isaaclab_assets import KBOT_CFG
-
-def latency_randomized_observation(
-    env: ManagerBasedEnv,
-    base_func: callable,
-    base_func_kwargs: dict,
-    latency_steps_range: tuple[int, int] = (1, 5),
-    buffer_size: int = 10,
-) -> torch.Tensor:
-    """Observation function with randomized latency simulation.
-    
-    Optimized version with vectorized operations and minimal overhead.
-    """
-    min_latency, max_latency = latency_steps_range
-    
-    # Fast path: if no latency possible, just return current observation
-    if max_latency == 0:
-        return base_func(env, **base_func_kwargs)
-    
-    # Initialize buffer attribute name
-    buffer_attr = f"_latency_buffer_{base_func.__name__}_{id(base_func_kwargs)}"
-    step_attr = f"_latency_step_{base_func.__name__}_{id(base_func_kwargs)}"
-    
-    # Get current observation
-    current_obs = base_func(env, **base_func_kwargs)
-    
-    # Initialize buffer if it doesn't exist
-    if not hasattr(env, buffer_attr):
-        setattr(env, buffer_attr, torch.zeros(
-            (buffer_size, *current_obs.shape), 
-            device=env.device, 
-            dtype=current_obs.dtype
-        ))
-        setattr(env, step_attr, 0)
-        # Return current observation on first call
-        return current_obs
-    
-    # Get buffer and current step
-    buffer = getattr(env, buffer_attr)
-    current_step = getattr(env, step_attr)
-    
-    # Store current observation in buffer
-    buffer[current_step % buffer_size] = current_obs
-    
-    # Update step counter
-    setattr(env, step_attr, current_step + 1)
-    
-    # Check if we have enough history
-    available_steps = min(current_step, buffer_size)
-    max_available_latency = min(max_latency, available_steps - 1)
-    
-    if max_available_latency < min_latency:
-        return current_obs
-    
-    # Optimized for (0,1) case - much faster
-    if min_latency == 0 and max_latency == 1:
-        # Random boolean mask for each environment
-        use_delayed = torch.rand(env.num_envs, device=env.device) > 0.5
-        
-        if available_steps >= 1:
-            prev_obs = buffer[(current_step - 1) % buffer_size]
-            return torch.where(use_delayed.unsqueeze(-1), prev_obs, current_obs)
-        else:
-            return current_obs
-    
-    # General case for larger latency ranges
-    latency_steps = torch.randint(
-        min_latency, 
-        max_available_latency + 1, 
-        (env.num_envs,), 
-        device=env.device
-    )
-    
-    # Vectorized buffer indexing
-    buffer_indices = (current_step - latency_steps) % buffer_size
-    env_indices = torch.arange(env.num_envs, device=env.device)
-    
-    return buffer[buffer_indices, env_indices]
-
-def imu_projected_gravity_with_latency(
-    env: ManagerBasedEnv, 
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("imu"),
-    latency_steps_range: tuple[int, int] = (1, 5),
-    buffer_size: int = 10,
-) -> torch.Tensor:
-    """IMU projected gravity with simulated latency.
-    
-    Args:
-        env: The environment instance  
-        asset_cfg: IMU sensor configuration
-        latency_steps_range: (min_steps, max_steps) for latency simulation
-                           - (0, 0): No latency (fastest)
-                           - (0, 1): Binary latency (very fast)
-                           - (1, 5): Multi-step latency (optimized)
-        buffer_size: History buffer size (should be >= max_latency)
-    
-    Returns:
-        Projected gravity with simulated latency
-    """
-    return latency_randomized_observation(
-        env=env,
-        base_func=mdp.imu_projected_gravity,
-        base_func_kwargs={"asset_cfg": asset_cfg},
-        latency_steps_range=latency_steps_range,
-        buffer_size=buffer_size,
-    )
-
-def override_value(env, env_ids, data, value, num_steps):
-    if env.common_step_counter > num_steps:
-        return value
-    return mdp.modify_term_cfg.NO_CHANGE
-
-def unified_command_curriculum(
-    env,
-    env_ids,
-    initial_ranges: dict[str, tuple[float, float]],
-    target_ranges: dict[str, tuple[float, float]],
-    start_step: int,
-    end_step: int,
-):
-    """Unified curriculum for all command ranges with configurable targets.
-    
-    Args:
-        initial_ranges: Dict mapping command names to initial (min, max) ranges
-                       e.g., {"lin_vel_x": (-0.25, 0.25), "lin_vel_y": (-0.25, 0.25), "ang_vel_z": (-0.1, 0.1)}
-        target_ranges: Dict mapping command names to target (min, max) ranges
-                      e.g., {"lin_vel_x": (-2.0, 2.0), "lin_vel_y": (-1.5, 1.5), "ang_vel_z": (-1.0, 1.0)}
-    
-    The return dict is logged to tensorboard.
-    """
-    if env.common_step_counter < start_step:
-        progress = 0.0
-    elif env.common_step_counter >= end_step:
-        progress = 1.0
-    else:
-        # Linear interpolation between start and end steps
-        progress = (env.common_step_counter - start_step) / (end_step - start_step)
-    
-    # Collect logging data
-    logging_data = {
-        "command_curriculum_progress": progress,
-    }
-    
-    # Update all command ranges
-    for command_name in initial_ranges.keys():
-        if command_name not in target_ranges:
-            continue  # Skip if no target specified
-            
-        initial_range = initial_ranges[command_name]
-        target_range = target_ranges[command_name]
-        
-        if progress == 0.0:
-            current_range = initial_range
-        elif progress == 1.0:
-            current_range = target_range
-        else:
-            # Linear interpolation
-            min_val = initial_range[0] + progress * (target_range[0] - initial_range[0])
-            max_val = initial_range[1] + progress * (target_range[1] - initial_range[1])
-            current_range = (min_val, max_val)
-        
-        # Update the command range directly
-        try:
-            # Navigate to the attribute and set it (assumes base_velocity command manager)
-            command_attr = f"command_manager.cfg.base_velocity.ranges.{command_name}"
-            parts = command_attr.split('.')
-            obj = env
-            for part in parts[:-1]:
-                obj = getattr(obj, part)
-            setattr(obj, parts[-1], current_range)
-        except AttributeError:
-            pass  # Silently fail if attribute doesn't exist
-        
-        # Add per-command logging
-        logging_data.update({
-            f"command_{command_name}_min": current_range[0],
-            f"command_{command_name}_max": current_range[1],
-            # f"command_{command_name}_span": current_range[1] - current_range[0],
-            # f"command_{command_name}_target_min": target_range[0],
-            # f"command_{command_name}_target_max": target_range[1],
-            # f"command_{command_name}_target_span": target_range[1] - target_range[0],
-        })
-    
-    return logging_data
-
-
-def unified_push_curriculum(
-    env,
-    env_ids,
-    target_velocities: dict[str, tuple[float, float]],
-    start_step: int,
-    end_step: int,
-    curriculum_type: str = "linear",  # "linear" or "exponential"
-    growth_rate: float = 2.0,  # Only used for exponential
-):
-    """Unified curriculum for all push axes with configurable target velocities.
-    
-    Args:
-        target_velocities: Dict mapping axis names to (min, max) velocity ranges
-                          e.g., {"x": (-1.5, 1.5), "y": (-1.5, 1.5), "z": (-0.8, 0.8), 
-                                "roll": (-1.5, 1.5), "pitch": (-1.5, 1.5), "yaw": (-1.5, 1.5)}
-        curriculum_type: "linear" or "exponential" progression
-        growth_rate: Growth rate for exponential curriculum
-    
-    The return dict is logged to tensorboard.
-    """
-    if env.common_step_counter < start_step:
-        progress = 0.0
-        if curriculum_type == "exponential":
-            current_scale = 0.05
-        else:  # linear
-            current_scale = 0.1
-    elif env.common_step_counter >= end_step:
-        progress = 1.0
-        current_scale = 1.0
-    else:
-        # Calculate progress and scaling
-        progress = (env.common_step_counter - start_step) / (end_step - start_step)
-        
-        if curriculum_type == "exponential":
-            start_scale = 0.05
-            end_scale = 1.0
-            # Exponential growth: scale = start_scale * (end_scale/start_scale)^progress^growth_rate
-            current_scale = start_scale * ((end_scale / start_scale) ** (progress ** growth_rate))
-        else:  # linear
-            start_scale = 0.1
-            end_scale = 1.0
-            current_scale = start_scale + progress * (end_scale - start_scale)
-    
-    # Update all axes and collect logging data
-    logging_data = {
-        "push_curriculum_progress": progress,
-        # "push_curriculum_scale": current_scale,
-        # "push_curriculum_is_exponential": 1.0 if curriculum_type == "exponential" else 0.0,
-    }
-    
-    
-    # Update the push velocity range directly in the event manager
-    if hasattr(env.event_manager, 'cfg') and hasattr(env.event_manager.cfg, 'push_robot'):
-        if not hasattr(env.event_manager.cfg.push_robot.params, 'velocity_range'):
-            env.event_manager.cfg.push_robot.params['velocity_range'] = {}
-        
-        for axis, target_velocity in target_velocities.items():
-            # Calculate current velocity for this axis
-            current_velocity = (target_velocity[0] * current_scale, target_velocity[1] * current_scale)
-            
-            # Update the configuration
-            env.event_manager.cfg.push_robot.params['velocity_range'][axis] = current_velocity
-            
-            # Add per-axis logging
-            current_magnitude = max(abs(current_velocity[0]), abs(current_velocity[1]))
-            target_magnitude = max(abs(target_velocity[0]), abs(target_velocity[1]))
-            
-            logging_data.update({
-                f"push_{axis}_magnitude": current_magnitude,
-                # f"push_{axis}_target_magnitude": target_magnitude,
-                # f"push_{axis}_min": current_velocity[0],
-                # f"push_{axis}_max": current_velocity[1],
-            })
-    
-    return logging_data
-
-
-
-def jump_robot(
-    env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
-    jump_height_range: tuple[float, float],
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-):
-    """Make the robot jump by setting vertical velocity based on desired jump height.
-    
-    Uses physics calculation: v = sqrt(2 * g * h) to determine required initial velocity.
-    
-    Args:
-        env: The environment instance
-        env_ids: Environment IDs to apply jump to
-        jump_height_range: (min_height, max_height) in meters for random jump height
-        asset_cfg: Asset configuration for the robot
-    """
-    # Sample random jump height for each environment
-    jump_heights = torch.rand(len(env_ids), device=env.device)
-    jump_heights = jump_heights * (jump_height_range[1] - jump_height_range[0]) + jump_height_range[0]
-    
-    gravity_magnitude = abs(env.sim.cfg.gravity[2])
-    
-    required_velocities = torch.sqrt(2 * gravity_magnitude * jump_heights)
-    
-    max_velocity = float(torch.max(required_velocities))
-    min_velocity = float(torch.min(required_velocities))
-    
-    velocity_range = {
-        "x": (0.0, 0.0),  # No horizontal velocity
-        "y": (0.0, 0.0),  # No horizontal velocity  
-        "z": (min_velocity, max_velocity),  # Vertical jump velocity
-        "roll": (0.0, 0.0),   # No angular velocity
-        "pitch": (0.0, 0.0),  # No angular velocity
-        "yaw": (0.0, 0.0),    # No angular velocity
-    }
-    
-    # Apply the jump using the existing push_by_setting_velocity function
-    mdp.push_by_setting_velocity(env, env_ids, velocity_range, asset_cfg)
 
 def action_acceleration_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Penalize the acceleration (second derivative) of actions using L2 squared kernel.
@@ -366,6 +58,7 @@ def action_acceleration_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
     # Return L2 squared penalty
     return torch.sum(torch.square(action_acceleration), dim=1)
 
+
 def contact_forces_l2_penalty(env: ManagerBasedRLEnv, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize contact forces using L2 squared penalty above threshold.
     
@@ -382,6 +75,7 @@ def contact_forces_l2_penalty(env: ManagerBasedRLEnv, threshold: float, sensor_c
     
     l2_penalty = torch.sum(torch.square(violations), dim=1) 
     return l2_penalty
+
 
 def foot_height_reward(
     env: ManagerBasedRLEnv, 
@@ -430,6 +124,7 @@ def foot_height_reward(
     reward = torch.exp(-total_error / std)
     
     return reward
+
 
 def randomize_imu_mount(
     env: ManagerBasedEnv,
@@ -491,31 +186,8 @@ def randomize_imu_mount(
     }
 
 
-# Latency simulation configuration
-# With sim.dt = 0.005 (200Hz), latency steps translate to:
-# 0 steps = 0ms (no latency), 1 step = 5ms, 2 steps = 10ms, 3 steps = 15ms, 5 steps = 25ms, 8 steps = 40ms
-# 
-# Performance guide:
-# - (0, 0): No latency - fastest, original speed
-# - (0, 1): Binary latency - very fast, ~5% overhead  
-# - (1, 3): Low latency - fast, ~10% overhead
-# - (1, 5): Medium latency - moderate, ~15% overhead
-# - (1, 8): High latency - realistic but slower, ~25% overhead
-#
-# Real-world sensor latencies:
-# - IMU: 1-10ms (gyro/accel), 5-20ms (magnetometer)
-# - Vision: 16-33ms (30-60 FPS cameras)
-# - Lidar: 50-100ms (mechanical), 10-50ms (solid state)
-
-# Curriculum timing constants
-CURRICULUM_START_STEP = 24 * 10   # 10
-CURRICULUM_END_STEP = 24 * 100   # 1000
-
-# Command curriculum timing constants
-COMMAND_CURRICULUM_START_STEP = 24 * 100   # 1000
-COMMAND_CURRICULUM_END_STEP = 24 * 200     # 1500
-
-
+# Adds flat terrain to the terrain generator
+# The default one did not have a flat portion
 KBOT_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     size=(8.0, 8.0),
     border_width=20.0,
@@ -525,7 +197,6 @@ KBOT_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     vertical_scale=0.005,
     slope_threshold=0.75,
     use_cache=False,
-    curriculum=True,
     sub_terrains={
         "flat": terrain_gen.MeshPlaneTerrainCfg(
             proportion=0.25,
@@ -570,37 +241,76 @@ KBOT_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     },
 )
 
+
+def velocity_push_curriculum(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    min_push: float,
+    max_push: float,
+    curriculum_start_step: int,
+    curriculum_stop_step: int,
+):
+    """Progressively increases push velocity from min_push to max_push over specified steps.
+
+    The return dict is logged to tensorboard.
+    """
+    # Only start curriculum after the specified start step
+    if env.common_step_counter < curriculum_start_step:
+        progress = 0.0
+    else:
+        # Calculate curriculum progress (0.0 to 1.0) from start_step to stop_step
+        curriculum_duration = curriculum_stop_step - curriculum_start_step
+        progress = (
+            env.common_step_counter - curriculum_start_step
+        ) / curriculum_duration
+        progress = min(progress, 1.0)
+
+    # Start with min velocity and increase to max
+    current_velocity = min_push + (max_push - min_push) * progress
+
+    # Update the push velocity range in the event manager
+    if hasattr(env.event_manager.cfg, "push_robot"):
+        env.event_manager.cfg.push_robot.params["velocity_range"] = {
+            "x": (-current_velocity, current_velocity),
+            "y": (-current_velocity, current_velocity),
+        }
+
+    # Return logging data for tensorboard
+    return {
+        "push_velocity_progress": progress,
+        "push_velocity_magnitude": current_velocity,
+    }
+
+
 @configclass
 class KBotRewards(RewardsCfg):
     """Reward terms for the K-Bot velocity task."""
 
     # -- base tracking & termination --
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-100.0)
-    stay_alive = RewTerm(func=mdp.is_alive, weight=1.0)
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=8.0,
+        weight=2.0,
         params={"command_name": "base_velocity", "std": 0.5},
     )
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
-        weight=4.0,
+        weight=1.0,
         params={"command_name": "base_velocity", "std": 0.5},
     )
 
     feet_air_time = RewTerm(
         func=mdp.feet_air_time_positive_biped,
-        weight=0.85,
+        weight=0.25,
         params={
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
                 body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
             ),
-            "threshold": 0.8,
+            "threshold": 0.4,
         },
     )
-
     feet_slide = RewTerm(
         func=mdp.feet_slide,
         weight=-0.1,
@@ -619,7 +329,7 @@ class KBotRewards(RewardsCfg):
         func=foot_height_reward,
         weight=0.5,
         params={
-            "target_height": 0.15,  # 15cm target height for swing phase
+            "target_height": 0.2,  # 15cm target height for swing phase
             "std": 0.05,           # Standard deviation for exponential kernel
             "tanh_mult": 2.0,      # Velocity multiplier for swing detection
             "asset_cfg": SceneEntityCfg(
@@ -641,7 +351,7 @@ class KBotRewards(RewardsCfg):
 
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.8,
+        weight=-0.5,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -655,11 +365,19 @@ class KBotRewards(RewardsCfg):
         },
     )
 
-    joint_deviation_ankle = RewTerm(
+    joint_deviation_hip_pitch_knee = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.8,
+        weight=-0.1,
         params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=["dof_left_ankle_02", "dof_right_ankle_02"]),
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    "dof_left_hip_pitch_04",
+                    "dof_right_hip_pitch_04",
+                    "dof_left_knee_04",
+                    "dof_right_knee_04",
+                ],
+            ),
         },
     )
 
@@ -668,6 +386,16 @@ class KBotRewards(RewardsCfg):
         weight=-0.5,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=["dof_left_knee_04", "dof_right_knee_04"]),
+        },
+    )
+
+    joint_deviation_ankles = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.5,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", joint_names=["dof_left_ankle_02", "dof_right_ankle_02"]
+            ),
         },
     )
 
@@ -708,18 +436,7 @@ class KBotRewards(RewardsCfg):
             )
         },
     )
-    
-    # foot_collision_explicit = RewTerm(
-    #     func=mdp.body_distance_penalty,
-    #     weight=-2.0,
-    #     params={
-    #         "min_distance": 0.3,
-    #         "asset_cfg": SceneEntityCfg("robot"),
-    #         "body_a_names": ["KB_D_501L_L_LEG_FOOT"],  # Left foot
-    #         "body_b_names": ["KB_D_501R_R_LEG_FOOT"],  # Right foot
-    #     },
-    # )
-    
+
     # Action smoothness penalty
     action_acceleration_l2 = RewTerm(
         func=action_acceleration_l2,
@@ -738,6 +455,42 @@ class KBotRewards(RewardsCfg):
             ),
         },
     )
+
+    # # No stomping reward
+    # # Foot-impact regulariser (discourages stomping)
+    # foot_impact_penalty = RewTerm(
+    #     func=mdp.contact_forces,
+    #     weight=-1.5e-3,
+    #     params={
+    #         "threshold": 358.0,  # Manually checked static load of the kbot while standing
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "contact_forces",
+    #             body_names=[
+    #                 "KB_D_501L_L_LEG_FOOT",
+    #                 "KB_D_501R_R_LEG_FOOT",
+    #                 "Torso_Side_Right",
+    #                 "KC_D_102L_L_Hip_Yoke_Drive",
+    #                 "RS03_5",
+    #                 "KC_D_301L_L_Femur_Lower_Drive",
+    #                 "KC_D_401L_L_Shin_Drive",
+    #                 "KC_C_104L_PitchHardstopDriven",
+    #                 "RS03_6",
+    #                 "KC_C_202L",
+    #                 "KC_C_401L_L_UpForearmDrive",
+    #                 "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+    #                 "KC_D_102R_R_Hip_Yoke_Drive",
+    #                 "RS03_4",
+    #                 "KC_D_301R_R_Femur_Lower_Drive",
+    #                 "KC_D_401R_R_Shin_Drive",
+    #                 "KC_C_104R_PitchHardstopDriven",
+    #                 "RS03_3",
+    #                 "KC_C_202R",
+    #                 "KC_C_401R_R_UpForearmDrive",
+    #                 "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+    #             ],
+    #         ),
+    #     },
+    # )
 
 
 @configclass
@@ -786,7 +539,7 @@ class KBotObservations:
             params={"asset_cfg": SceneEntityCfg("imu")},
             noise=Unoise(n_min=-0.1, n_max=0.1),
         )
-        
+
         # Privileged Critic Observations
         # Joint dynamics information (privileged)
         joint_torques = ObsTerm(
@@ -794,65 +547,79 @@ class KBotObservations:
             params={"asset_cfg": SceneEntityCfg("robot")},
             noise=Unoise(n_min=-0.0001, n_max=0.0001),
         )
-        
+
         # Contact forces on feet (privileged foot contact information)
         feet_contact_forces = ObsTerm(
             func=mdp.body_incoming_wrench,
             scale=0.01,
-            params={"asset_cfg": SceneEntityCfg("robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"])},
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+                )
+            },
         )
-        
+
         # Body poses for important body parts (privileged state info)
         body_poses = ObsTerm(
             func=mdp.body_pose_w,
-            params={"asset_cfg": SceneEntityCfg("robot", body_names=["base", "KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"])},
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=["base", "KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+                )
+            },
             noise=Unoise(n_min=-0.0001, n_max=0.0001),
         )
-        
+
         # Joint positions and velocities with less noise (privileged accurate state)
         joint_pos_accurate = ObsTerm(
-            func=mdp.joint_pos_rel, 
-            noise=Unoise(n_min=-0.0001, n_max=0.0001),  # Much less noise than policy
+            func=mdp.joint_pos_rel,
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),
         )
         joint_vel_accurate = ObsTerm(
-            func=mdp.joint_vel_rel, 
-            noise=Unoise(n_min=-0.0001, n_max=0.0001),  # Much less noise than policy  
+            func=mdp.joint_vel_rel,
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),
         )
-        
+
         # Base position (full pose information - privileged)
-        base_pos = ObsTerm(func=mdp.base_pos_z, noise=Unoise(n_min=-0.0001, n_max=0.0001))
-        
+        base_pos = ObsTerm(
+            func=mdp.base_pos_z, noise=Unoise(n_min=-0.0001, n_max=0.0001)
+        )
+
         # Root state information (privileged)
-        root_lin_vel_w = ObsTerm(func=mdp.root_lin_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001))
-        root_ang_vel_w = ObsTerm(func=mdp.root_ang_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001))
+        root_lin_vel_w = ObsTerm(
+            func=mdp.root_lin_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001)
+        )
+        root_ang_vel_w = ObsTerm(
+            func=mdp.root_ang_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001)
+        )
+
+        # No noise for the critic
+        def __post_init__(self):
+            self.enable_corruption = False
 
     @configclass
     class PolicyCfg(ObservationGroupCfg):
         # observation terms (order preserved)
         projected_gravity = ObsTerm(
-            func=imu_projected_gravity_with_latency,
-            params={
-                "asset_cfg": SceneEntityCfg("imu"),
-                "latency_steps_range": (0, 1),
-                "buffer_size": 4,
-            },
+            func=mdp.imu_projected_gravity,
+            params={"asset_cfg": SceneEntityCfg("imu")},
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
         velocity_commands = ObsTerm(
             func=mdp.generated_commands, params={"command_name": "base_velocity"}
         )
         joint_pos = ObsTerm(
-            func=mdp.joint_pos_rel, noise=Unoise(n_min=-math.radians(5), n_max=math.radians(5))
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.05, n_max=0.05)
         )
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
-
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-0.5, n_max=0.5))
+        # IMU observations
         imu_ang_vel = ObsTerm(
             func=mdp.imu_ang_vel,
             params={"asset_cfg": SceneEntityCfg("imu")},
             noise=Unoise(n_min=-0.1, n_max=0.1),
         )
-
-
+        # actions = ObsTerm(func=mdp.last_action)
         # No linear acceleration for now
         # imu_lin_acc = ObsTerm(
         #     func=mdp.imu_lin_acc,
@@ -861,7 +628,7 @@ class KBotObservations:
         # )
 
         def __post_init__(self):
-            self.enable_corruption = True
+            self.enable_corruption = False
             self.concatenate_terms = True
 
     # Observation groups:
@@ -870,57 +637,20 @@ class KBotObservations:
 
 
 @configclass
-class KBotCurriculumCfg(CurriculumCfg):
-    """Curriculum terms for the K-Bot locomotion task."""
+class KBotCurriculumCfg:
+    """Curriculum configuration for KBot push training."""
 
-    # Unified Push Robot Curriculum - Linear progression for linear velocities
-    push_linear_velocities = CurrTerm(
-        func=unified_push_curriculum,
-        params={
-            "target_velocities": {
-                "x": (-1.5, 1.5),
-                "y": (-1.5, 1.5),
-                "z": (-0.8, 0.8),
-            },
-            "start_step": CURRICULUM_START_STEP,
-            "end_step": CURRICULUM_END_STEP,
-            "curriculum_type": "linear",
-        }
-    )
-    
-    # Unified Push Robot Curriculum - Exponential progression for angular velocities
-    push_angular_velocities = CurrTerm(
-        func=unified_push_curriculum,
-        params={
-            "target_velocities": {
-                "roll": (-1.5, 1.5),
-                "pitch": (-1.5, 1.5),
-                "yaw": (-1.5, 1.5),
-            },
-            "start_step": CURRICULUM_START_STEP,
-            "end_step": CURRICULUM_END_STEP,
-            "curriculum_type": "exponential",
-            "growth_rate": 1.5,
-        }
-    )
+    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
 
-    # Unified Command Range Curriculum
-    command_ranges = CurrTerm(
-        func=unified_command_curriculum,
+    # Configurable velocity push curriculum
+    velocity_push_curriculum = CurrTerm(
+        func=velocity_push_curriculum,
         params={
-            "initial_ranges": {
-                "lin_vel_x": (-0.5, 0.5),
-                "lin_vel_y": (-0.5, 0.5),
-                "ang_vel_z": (-0.1, 0.1),
-            },
-            "target_ranges": {
-                "lin_vel_x": (-2.0, 2.0),
-                "lin_vel_y": (-1.5, 1.5),
-                "ang_vel_z": (-1.0, 1.0),
-            },
-            "start_step": COMMAND_CURRICULUM_START_STEP,
-            "end_step": COMMAND_CURRICULUM_END_STEP,
-        }
+            "min_push": 0.01,
+            "max_push": 0.01,
+            "curriculum_start_step": 24 * 100,
+            "curriculum_stop_step": 24 * 2500,
+        },
     )
 
 
@@ -929,22 +659,22 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     rewards: KBotRewards = KBotRewards()
     observations: KBotObservations = KBotObservations()
     curriculum: KBotCurriculumCfg = KBotCurriculumCfg()
-    # terminations: KBotTerminations = KBotTerminations()
 
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
 
-        self.actions.action_history_length = 3
-
-        self.scene.terrain.terrain_generator = KBOT_ROUGH_TERRAINS_CFG
-
-        randomize_every_reset = True
-        # randomize_every_reset = False
-
         # Scene
         self.scene.robot = KBOT_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"
+
+        # Terrains
+        # Override terrain generator with custom KBot configuration
+        self.scene.terrain.terrain_generator = KBOT_ROUGH_TERRAINS_CFG
+
+        # Enable curriculum for the custom terrain generator
+        if getattr(self.curriculum, "terrain_levels", None) is not None:
+            self.scene.terrain.terrain_generator.curriculum = True
 
         # Imu
         self.scene.imu = ImuCfg(
@@ -957,131 +687,158 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             ),
         )
 
-        # # Randomization
-        self.events.reset_robot_joints.func=mdp.reset_joints_by_offset
-        self.events.reset_robot_joints.params["position_range"] = (-math.radians(20), math.radians(20))
-        self.events.reset_robot_joints.params["velocity_range"] = (-0.2, 0.2)
-        self.events.base_external_force_torque.params["asset_cfg"].body_names = ["base"]
-        self.events.reset_base.params = {
-            "pose_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
-                "yaw": (-3.14, 3.14),
-                "pitch": (-math.radians(20), math.radians(20)),
-                "roll": (-math.radians(20), math.radians(20)),
-            },
-            "velocity_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
-                "z": (-0.5, 0.5),
-                "roll": (-0.5, 0.5),
-                "pitch": (-0.5, 0.5),
-                "yaw": (-0.5, 0.5),
-            },
-        }
+        # # Physics material randomization (friction with the floor)
+        # self.events.physics_material = EventTerm(
+        #     func=mdp.randomize_rigid_body_material,
+        #     mode="reset",
+        #     params={
+        #         "asset_cfg": SceneEntityCfg(
+        #             "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+        #         ),
+        #         "static_friction_range": (0.1, 2.0),
+        #         "dynamic_friction_range": (0.1, 2.0),
+        #         "restitution_range": (0.0, 0.1),
+        #         "num_buckets": 64,
+        #         "make_consistent": True,  # Ensure dynamic friction is always less than static friction
+        #     },
+        # )
 
-        self.events.jump_robot = EventTerm(
-            func=jump_robot,
-            mode="interval",
-            interval_range_s=(15.0, 30.0),
-            params={
-                "jump_height_range": (0.1, 0.3),
-                "asset_cfg": SceneEntityCfg("robot"),
-            },
-        )
+        # # Individual link mass randomization for robustness
+        # self.events.add_limb_masses = EventTerm(
+        #     func=mdp.randomize_rigid_body_mass,
+        #     mode="reset",
+        #     params={
+        #         "asset_cfg": SceneEntityCfg(
+        #             "robot",
+        #             body_names=[
+        #                 "Torso_Side_Right",
+        #                 "KC_D_102L_L_Hip_Yoke_Drive",
+        #                 "KC_C_104L_PitchHardstopDriven",
+        #                 "KC_D_102R_R_Hip_Yoke_Drive",
+        #                 "KC_C_104R_PitchHardstopDriven",
+        #                 "RS03_5",
+        #                 "RS03_6",
+        #                 "RS03_4",
+        #                 "RS03_3",
+        #                 "KC_D_301L_L_Femur_Lower_Drive",
+        #                 "KC_C_202L",
+        #                 "KC_D_301R_R_Femur_Lower_Drive",
+        #                 "KC_C_202R",
+        #                 "KC_D_401L_L_Shin_Drive",
+        #                 "KC_C_401L_L_UpForearmDrive",
+        #                 "KC_D_401R_R_Shin_Drive",
+        #                 "KC_C_401R_R_UpForearmDrive",
+        #                 "KB_D_501L_L_LEG_FOOT",
+        #                 "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+        #                 "KB_D_501R_R_LEG_FOOT",
+        #                 "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+        #             ],
+        #         ),
+        #         "mass_distribution_params": (0.8, 1.2),
+        #         "operation": "scale",
+        #         "distribution": "uniform",
+        #         "recompute_inertia": True,
+        #     },
+        # )
 
-        # Start with gentle pushes - curriculum will progressively increase these
-        self.events.push_robot.params["velocity_range"] = {
-            "x": (-0.08, 0.08),    # Start at 10% of target intensity
-            "y": (-0.08, 0.08),    # Start at 10% of target intensity
-            "z": (-0.015, 0.015),  # Start at 5% of target intensity  
-            "roll": (-0.025, 0.025),   # Start at 5% of target intensity
-            "pitch": (-0.025, 0.025),  # Start at 5% of target intensity
-            "yaw": (-0.025, 0.025),    # Start at 5% of target intensity
-        }
+        # # PD gains randomization
+        # self.events.randomize_actuator_gains = EventTerm(
+        #     func=mdp.randomize_actuator_gains,
+        #     mode="reset",
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+        #         "stiffness_distribution_params": (0.8, 1.2),
+        #         "damping_distribution_params": (0.8, 1.2),
+        #         "operation": "scale",
+        #         "distribution": "uniform",
+        #     },
+        # )
 
+        # # Actuator friction and armature randomization
+        # self.events.randomize_joint_properties = EventTerm(
+        #     func=mdp.randomize_joint_parameters,
+        #     mode="reset",
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+        #         "friction_distribution_params": (0.0, 0.3),
+        #         "armature_distribution_params": (0.8, 1.2),
+        #         "operation": "scale",
+        #         "distribution": "uniform",
+        #     },
+        # )
+
+        # # Joint initialization randomization
+        # # Reset by offset is needed since the default is to scale by zero
+        # self.events.reset_robot_joints.params["position_range"] = (-0.2, 0.2)
+        # self.events.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)
+        # self.events.reset_robot_joints.func = mdp.reset_joints_by_offset
+
+        # # No randomization of joint positions
+        self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
+        self.events.reset_robot_joints.params["velocity_range"] = (-0.0, 0.0)
+
+        self.events.push_robot.mode = "interval"
         self.events.push_robot.interval_range_s = (0.5, 15.0)
+        self.events.push_robot.params["velocity_range"] = {
+            "x": (-0.01, 0.01),
+            "y": (-0.01, 0.01),
+        }
 
+        # # Base reset randomization
+        # self.events.reset_base.params = {
+        #     "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+        #     "velocity_range": {
+        #         "x": (-0.3, 0.3),
+        #         "y": (-0.3, 0.3),
+        #         "z": (-0.1, 0.1),
+        #         "roll": (-0.2, 0.2),
+        #         "pitch": (-0.2, 0.2),
+        #         "yaw": (-0.2, 0.2),
+        #     },
+        # }
+
+        # No reset randomization
+        self.events.reset_base.params = {
+            "pose_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "yaw": (-0.0, 0.0)},
+            "velocity_range": {
+                "x": (-0.0, 0.0),
+                "y": (-0.0, 0.0),
+                "z": (-0.0, 0.0),
+                "roll": (-0.0, 0.0),
+                "pitch": (-0.0, 0.0),
+                "yaw": (-0.0, 0.0),
+            },
+        }
+
+        # # IMU offset pos and rot randomization
+        # self.events.randomize_imu_mount = EventTerm(
+        #     func=randomize_imu_mount,
+        #     mode="reset",
+        #     params={
+        #         "sensor_cfg": SceneEntityCfg("imu"),
+        #         "pos_range": {
+        #             "x": (-0.05, 0.05),
+        #             "y": (-0.05, 0.05),
+        #             "z": (-0.05, 0.05),
+        #         },
+        #         "rot_range": {
+        #             "roll": (-0.1, 0.1),
+        #             "pitch": (-0.1, 0.1),
+        #             "yaw": (-0.1, 0.1),
+        #         },
+        #     },
+        # )
+
+        # I think this is because the "base" is not a rigid body in the robot asset
         self.events.add_base_mass = None
-
-        self.events.randomize_link_masses = EventTerm(
-            func=mdp.randomize_rigid_body_mass,
-            mode="reset",
-            params={
-                "asset_cfg": SceneEntityCfg("robot",
-                        body_names=[
-                        "Torso_Side_Right",
-                        "KC_D_102L_L_Hip_Yoke_Drive",
-                        "KC_C_104L_PitchHardstopDriven",
-                        "KC_D_102R_R_Hip_Yoke_Drive",
-                        "KC_C_104R_PitchHardstopDriven",
-                        "RS03_5",
-                        "RS03_6",
-                        "RS03_4",
-                        "RS03_3",
-                        "KC_D_301L_L_Femur_Lower_Drive",
-                        "KC_C_202L",
-                        "KC_D_301R_R_Femur_Lower_Drive",
-                        "KC_C_202R",
-                        "KC_D_401L_L_Shin_Drive",
-                        "KC_C_401L_L_UpForearmDrive",
-                        "KC_D_401R_R_Shin_Drive",
-                        "KC_C_401R_R_UpForearmDrive",
-                        "KB_D_501L_L_LEG_FOOT",
-                        "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
-                        "KB_D_501R_R_LEG_FOOT",
-                        "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
-                    ],),
-                "mass_distribution_params": (0.7, 1.3),
-                "operation": "scale",
-                "recompute_inertia": True,
-            },
-        )
-
-        self.events.physics_material.params["static_friction_range"] = (0.3, 0.9)
-        self.events.physics_material.params["dynamic_friction_range"] = (0.2, 0.7)
-        self.events.physics_material.params["restitution_range"] = (0.0, 0.1)
-        self.events.physics_material.params["make_consistent"] = True  # Ensure dynamic friction is always less than static friction
-
-        self.events.randomize_joint_parameters = EventTerm(
-            func=mdp.randomize_joint_parameters,
-            mode="reset",
-            params={
-                "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-                "armature_distribution_params": (0.5, 4.0),
-                "friction_distribution_params": (0.5, 4.0),
-                "operation": "scale",
-            },
-        )
-
-        self.events.randomize_imu_mount = EventTerm(
-            func=randomize_imu_mount,
-            mode="reset",
-            params={
-                "sensor_cfg": SceneEntityCfg("imu"),
-                "pos_range": {
-                    "x": (-0.03, 0.03),
-                    "y": (-0.03, 0.03),
-                    "z": (-0.03, 0.03),
-                },
-                "rot_range": {
-                    "roll": (-math.radians(2.0), math.radians(2.0)),
-                    "pitch": (-math.radians(2.0), math.radians(2.0)),
-                    "yaw": (-math.radians(2.0), math.radians(2.0)),
-                },
-            },
-        )
-
-        if randomize_every_reset:
-            self.events.physics_material.mode = "reset"
-            self.events.randomize_joint_parameters.mode = "reset"
+        # self.events.base_com = None
+        self.events.base_com.params["asset_cfg"] = SceneEntityCfg("robot", body_names="Torso_Side_Right")
 
         # Rewards
-        self.rewards.lin_vel_z_l2.weight = -0.01
+        self.rewards.lin_vel_z_l2.weight = 0.0
         self.rewards.undesired_contacts = None
-        self.rewards.flat_orientation_l2.params["asset_cfg"] = SceneEntityCfg("imu")
-        self.rewards.flat_orientation_l2.weight = -5.0
-        self.rewards.action_rate_l2.weight = -0.1
+        self.rewards.flat_orientation_l2.weight = -1.0
+        self.rewards.action_rate_l2.weight = -0.05
         self.rewards.dof_acc_l2.weight = -1.25e-7
         self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg(
             "robot",
@@ -1097,7 +854,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "dof_right_knee_04",
             ],
         )
-        self.rewards.dof_torques_l2.weight = -2.5e-6 # -1.5e-7
+        self.rewards.dof_torques_l2.weight = -1.5e-7
         self.rewards.dof_torques_l2.params["asset_cfg"] = SceneEntityCfg(
             "robot",
             joint_names=[
@@ -1114,10 +871,11 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "dof_right_ankle_02",
             ],
         )
-        
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 0.5)  # Curriculum will gradually increase to (-2.0, 2.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)  # Curriculum will gradually increase to (-1.5, 1.5)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.1, 0.1)    # Curriculum will gradually increase to (-1.0, 1.0)
+
+        # Commands
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
         # Terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = [
@@ -1142,6 +900,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
         ]
 
+
 @configclass
 class KBotRoughEnvCfg_PLAY(KBotRoughEnvCfg):
     def __post_init__(self):
@@ -1160,17 +919,16 @@ class KBotRoughEnvCfg_PLAY(KBotRoughEnvCfg):
             self.scene.terrain.terrain_generator.num_cols = 5
             self.scene.terrain.terrain_generator.curriculum = False
 
-        # self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
-        # self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
-        # self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.5, 1.5)
+        self.commands.base_velocity.ranges.lin_vel_y = (-1.5, 1.5)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        self.commands.base_velocity.rel_standing_envs = 0.2
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
-        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         # disable randomization for play
         self.observations.policy.enable_corruption = False
-        # remove random pushing
+        # remove random pushing for play
         self.events.base_external_force_torque = None
         self.events.push_robot = None
-        self.curriculum = None
-        # self.events = None
+
+        # Disable push curriculum for play mode
+        self.curriculum.velocity_push_curriculum = None
