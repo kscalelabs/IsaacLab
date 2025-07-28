@@ -52,7 +52,7 @@ class KBotFlatPPORunnerCfg(KBotRoughPPORunnerCfg):
 @configclass
 class KBotRoughRNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 3000
+    max_iterations = 3000000
     save_interval = 50
     experiment_name = "kbot_rough_rnn"
     empirical_normalization = False
