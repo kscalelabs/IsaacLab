@@ -510,7 +510,6 @@ class KBotCurriculumCfg:
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-
     enable_randomization: bool = True
     rewards: KBotRewards = KBotRewards()
     observations: KBotObservations = KBotObservations()
@@ -748,6 +747,8 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         Use with command line arg: env.enable_randomization=false
         """
+        
+        print("[INFO]: Disabling all domain randomization!\n" * 5, end="")
 
         # Disable events
         self.events.physics_material = None
