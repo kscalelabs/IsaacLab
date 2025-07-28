@@ -924,6 +924,13 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         if hasattr(self.rewards, "foot_impact_penalty"):
             self.rewards.foot_impact_penalty = None
 
+        # Remove actuator latency
+        for act_cfg in self.scene.robot.actuators.values():
+            if hasattr(act_cfg, "min_delay"):
+                act_cfg.min_delay = 0
+            if hasattr(act_cfg, "max_delay"):
+                act_cfg.max_delay = 0
+
 
 @configclass
 class KBotRoughEnvCfg_PLAY(KBotRoughEnvCfg):
