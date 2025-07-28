@@ -258,6 +258,22 @@ class KBotRewards(RewardsCfg):
         },
     )
 
+    joint_deviation_hip_pitch_knee = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    "dof_left_hip_pitch_04",
+                    "dof_right_hip_pitch_04",
+                    "dof_left_knee_04",
+                    "dof_right_knee_04",
+                ],
+            ),
+        },
+    )
+
     joint_deviation_ankles = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.5,
@@ -289,6 +305,42 @@ class KBotRewards(RewardsCfg):
                     "dof_right_wrist_00",
                 ],
             )
+        },
+    )
+
+    # No stomping reward
+    # Foot-impact regulariser (discourages stomping)
+    foot_impact_penalty = RewTerm(
+        func=mdp.contact_forces,
+        weight=-1.5e-3,
+        params={
+            "threshold": 358.0,  # Manually checked static load of the kbot while standing
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=[
+                    "KB_D_501L_L_LEG_FOOT",
+                    "KB_D_501R_R_LEG_FOOT",
+                    "Torso_Side_Right",
+                    "KC_D_102L_L_Hip_Yoke_Drive",
+                    "RS03_5",
+                    "KC_D_301L_L_Femur_Lower_Drive",
+                    "KC_D_401L_L_Shin_Drive",
+                    "KC_C_104L_PitchHardstopDriven",
+                    "RS03_6",
+                    "KC_C_202L",
+                    "KC_C_401L_L_UpForearmDrive",
+                    "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+                    "KC_D_102R_R_Hip_Yoke_Drive",
+                    "RS03_4",
+                    "KC_D_301R_R_Femur_Lower_Drive",
+                    "KC_D_401R_R_Shin_Drive",
+                    "KC_C_104R_PitchHardstopDriven",
+                    "RS03_3",
+                    "KC_C_202R",
+                    "KC_C_401R_R_UpForearmDrive",
+                    "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+                ],
+            ),
         },
     )
 
@@ -419,7 +471,9 @@ class KBotObservations:
             params={"asset_cfg": SceneEntityCfg("imu")},
             noise=Unoise(n_min=-0.1, n_max=0.1),
         )
+
         actions = ObsTerm(func=mdp.last_action)
+
         # No linear acceleration for now
         # imu_lin_acc = ObsTerm(
         #     func=mdp.imu_lin_acc,
@@ -448,14 +502,15 @@ class KBotCurriculumCfg:
         params={
             "min_push": 0.01,
             "max_push": 2.0,
-            "curriculum_start_step": 24 * 100,
-            "curriculum_stop_step": 24 * 2500,
+            "curriculum_start_step": 24 * 500,
+            "curriculum_stop_step": 24 * 5500,
         },
     )
 
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+    enable_randomization: bool = True
     rewards: KBotRewards = KBotRewards()
     observations: KBotObservations = KBotObservations()
     curriculum: KBotCurriculumCfg = KBotCurriculumCfg()
@@ -573,10 +628,6 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)
         self.events.reset_robot_joints.func = mdp.reset_joints_by_offset
 
-        # # No randomization of joint positions
-        # self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
-        # self.events.reset_robot_joints.params["velocity_range"] = (-0.0, 0.0)
-
         self.events.push_robot.mode = "interval"
         self.events.push_robot.interval_range_s = (5.0, 15.0)
         self.events.push_robot.params["velocity_range"] = {
@@ -596,19 +647,6 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "yaw": (-0.2, 0.2),
             },
         }
-
-        # # No reset randomization
-        # self.events.reset_base.params = {
-        #     "pose_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "yaw": (-0.0, 0.0)},
-        #     "velocity_range": {
-        #         "x": (-0.0, 0.0),
-        #         "y": (-0.0, 0.0),
-        #         "z": (-0.0, 0.0),
-        #         "roll": (-0.0, 0.0),
-        #         "pitch": (-0.0, 0.0),
-        #         "yaw": (-0.0, 0.0),
-        #     },
-        # }
 
         # IMU offset pos and rot randomization
         self.events.randomize_imu_mount = EventTerm(
@@ -675,6 +713,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        self.commands.base_velocity.rel_standing_envs = 0.2
 
         # Terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = [
@@ -682,7 +721,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "KC_D_102L_L_Hip_Yoke_Drive",
             "RS03_5",
             "KC_D_301L_L_Femur_Lower_Drive",
-            # "KC_D_401L_L_Shin_Drive",
+            "KC_D_401L_L_Shin_Drive",
             "KC_C_104L_PitchHardstopDriven",
             "RS03_6",
             "KC_C_202L",
@@ -691,13 +730,61 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "KC_D_102R_R_Hip_Yoke_Drive",
             "RS03_4",
             "KC_D_301R_R_Femur_Lower_Drive",
-            # "KC_D_401R_R_Shin_Drive",
+            "KC_D_401R_R_Shin_Drive",
             "KC_C_104R_PitchHardstopDriven",
             "RS03_3",
             "KC_C_202R",
             "KC_C_401R_R_UpForearmDrive",
             "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
         ]
+
+        # Apply randomization settings based on flag
+        if not self.enable_randomization:
+            self._disable_randomization()
+
+    def _disable_randomization(self):
+        """Disable all randomization for easy early training.
+
+        Use with command line arg: env.enable_randomization=false
+        """
+        
+        print("[INFO]: Disabling all domain randomization!\n" * 5, end="")
+
+        # Disable events
+        self.events.physics_material = None
+        self.events.add_limb_masses = None
+        self.events.randomize_actuator_gains = None
+        self.events.randomize_joint_properties = None
+        self.events.randomize_imu_mount = None
+
+        # Simple resets
+        self.events.reset_robot_joints.params.update(
+            {"position_range": (1.0, 1.0), "velocity_range": (0.0, 0.0)}
+        )
+        self.events.reset_robot_joints.func = mdp.reset_joints_by_scale
+        self.events.reset_base.params = {
+            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
+            "velocity_range": {
+                "x": (0.0, 0.0),
+                "y": (0.0, 0.0),
+                "z": (0.0, 0.0),
+                "roll": (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw": (0.0, 0.0),
+            },
+        }
+
+        # No pushes and push curriculum
+        self.events.push_robot = None
+        if hasattr(self.curriculum, "velocity_push_curriculum"):
+            self.curriculum.velocity_push_curriculum = None
+
+        # No actor observation noise
+        self.observations.policy.enable_corruption = False
+
+        # No foot impact penalty
+        if hasattr(self.rewards, "foot_impact_penalty"):
+            self.rewards.foot_impact_penalty = None
 
 
 @configclass

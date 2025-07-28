@@ -381,14 +381,6 @@ class KBotRewards(RewardsCfg):
         },
     )
 
-    joint_deviation_knee = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.5,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=["dof_left_knee_04", "dof_right_knee_04"]),
-        },
-    )
-
     joint_deviation_ankles = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.5,
@@ -647,15 +639,16 @@ class KBotCurriculumCfg:
         func=velocity_push_curriculum,
         params={
             "min_push": 0.01,
-            "max_push": 0.01,
-            "curriculum_start_step": 24 * 100,
-            "curriculum_stop_step": 24 * 2500,
+            "max_push": 0.5,
+            "curriculum_start_step": 24 * 500,
+            "curriculum_stop_step": 24 * 5500,
         },
     )
 
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+    enable_randomization: bool = True
     rewards: KBotRewards = KBotRewards()
     observations: KBotObservations = KBotObservations()
     curriculum: KBotCurriculumCfg = KBotCurriculumCfg()
@@ -687,152 +680,134 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             ),
         )
 
-        # # Physics material randomization (friction with the floor)
-        # self.events.physics_material = EventTerm(
-        #     func=mdp.randomize_rigid_body_material,
-        #     mode="reset",
-        #     params={
-        #         "asset_cfg": SceneEntityCfg(
-        #             "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
-        #         ),
-        #         "static_friction_range": (0.1, 2.0),
-        #         "dynamic_friction_range": (0.1, 2.0),
-        #         "restitution_range": (0.0, 0.1),
-        #         "num_buckets": 64,
-        #         "make_consistent": True,  # Ensure dynamic friction is always less than static friction
-        #     },
-        # )
+        # Physics material randomization (friction with the floor)
+        self.events.physics_material = EventTerm(
+            func=mdp.randomize_rigid_body_material,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+                ),
+                "static_friction_range": (0.1, 2.0),
+                "dynamic_friction_range": (0.1, 2.0),
+                "restitution_range": (0.0, 0.1),
+                "num_buckets": 64,
+                "make_consistent": True,  # Ensure dynamic friction is always less than static friction
+            },
+        )
 
-        # # Individual link mass randomization for robustness
-        # self.events.add_limb_masses = EventTerm(
-        #     func=mdp.randomize_rigid_body_mass,
-        #     mode="reset",
-        #     params={
-        #         "asset_cfg": SceneEntityCfg(
-        #             "robot",
-        #             body_names=[
-        #                 "Torso_Side_Right",
-        #                 "KC_D_102L_L_Hip_Yoke_Drive",
-        #                 "KC_C_104L_PitchHardstopDriven",
-        #                 "KC_D_102R_R_Hip_Yoke_Drive",
-        #                 "KC_C_104R_PitchHardstopDriven",
-        #                 "RS03_5",
-        #                 "RS03_6",
-        #                 "RS03_4",
-        #                 "RS03_3",
-        #                 "KC_D_301L_L_Femur_Lower_Drive",
-        #                 "KC_C_202L",
-        #                 "KC_D_301R_R_Femur_Lower_Drive",
-        #                 "KC_C_202R",
-        #                 "KC_D_401L_L_Shin_Drive",
-        #                 "KC_C_401L_L_UpForearmDrive",
-        #                 "KC_D_401R_R_Shin_Drive",
-        #                 "KC_C_401R_R_UpForearmDrive",
-        #                 "KB_D_501L_L_LEG_FOOT",
-        #                 "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
-        #                 "KB_D_501R_R_LEG_FOOT",
-        #                 "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
-        #             ],
-        #         ),
-        #         "mass_distribution_params": (0.8, 1.2),
-        #         "operation": "scale",
-        #         "distribution": "uniform",
-        #         "recompute_inertia": True,
-        #     },
-        # )
+        # Individual link mass randomization for robustness
+        self.events.add_limb_masses = EventTerm(
+            func=mdp.randomize_rigid_body_mass,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=[
+                        "Torso_Side_Right",
+                        "KC_D_102L_L_Hip_Yoke_Drive",
+                        "KC_C_104L_PitchHardstopDriven",
+                        "KC_D_102R_R_Hip_Yoke_Drive",
+                        "KC_C_104R_PitchHardstopDriven",
+                        "RS03_5",
+                        "RS03_6",
+                        "RS03_4",
+                        "RS03_3",
+                        "KC_D_301L_L_Femur_Lower_Drive",
+                        "KC_C_202L",
+                        "KC_D_301R_R_Femur_Lower_Drive",
+                        "KC_C_202R",
+                        "KC_D_401L_L_Shin_Drive",
+                        "KC_C_401L_L_UpForearmDrive",
+                        "KC_D_401R_R_Shin_Drive",
+                        "KC_C_401R_R_UpForearmDrive",
+                        "KB_D_501L_L_LEG_FOOT",
+                        "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+                        "KB_D_501R_R_LEG_FOOT",
+                        "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+                    ],
+                ),
+                "mass_distribution_params": (0.8, 1.2),
+                "operation": "scale",
+                "distribution": "uniform",
+                "recompute_inertia": True,
+            },
+        )
 
-        # # PD gains randomization
-        # self.events.randomize_actuator_gains = EventTerm(
-        #     func=mdp.randomize_actuator_gains,
-        #     mode="reset",
-        #     params={
-        #         "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-        #         "stiffness_distribution_params": (0.8, 1.2),
-        #         "damping_distribution_params": (0.8, 1.2),
-        #         "operation": "scale",
-        #         "distribution": "uniform",
-        #     },
-        # )
+        # PD gains randomization
+        self.events.randomize_actuator_gains = EventTerm(
+            func=mdp.randomize_actuator_gains,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+                "stiffness_distribution_params": (0.8, 1.2),
+                "damping_distribution_params": (0.8, 1.2),
+                "operation": "scale",
+                "distribution": "uniform",
+            },
+        )
 
-        # # Actuator friction and armature randomization
-        # self.events.randomize_joint_properties = EventTerm(
-        #     func=mdp.randomize_joint_parameters,
-        #     mode="reset",
-        #     params={
-        #         "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-        #         "friction_distribution_params": (0.0, 0.3),
-        #         "armature_distribution_params": (0.8, 1.2),
-        #         "operation": "scale",
-        #         "distribution": "uniform",
-        #     },
-        # )
+        # Actuator friction and armature randomization
+        self.events.randomize_joint_properties = EventTerm(
+            func=mdp.randomize_joint_parameters,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+                "friction_distribution_params": (0.0, 0.3),
+                "armature_distribution_params": (0.8, 1.2),
+                "operation": "scale",
+                "distribution": "uniform",
+            },
+        )
 
-        # # Joint initialization randomization
-        # # Reset by offset is needed since the default is to scale by zero
-        # self.events.reset_robot_joints.params["position_range"] = (-0.2, 0.2)
-        # self.events.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)
-        # self.events.reset_robot_joints.func = mdp.reset_joints_by_offset
-
-        # # No randomization of joint positions
-        self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
-        self.events.reset_robot_joints.params["velocity_range"] = (-0.0, 0.0)
+        # Joint initialization randomization
+        # Reset by offset is needed since the default is to scale by zero
+        self.events.reset_robot_joints.params["position_range"] = (-0.2, 0.2)
+        self.events.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)
+        self.events.reset_robot_joints.func = mdp.reset_joints_by_offset
 
         self.events.push_robot.mode = "interval"
-        self.events.push_robot.interval_range_s = (0.5, 15.0)
+        self.events.push_robot.interval_range_s = (5.0, 15.0)
         self.events.push_robot.params["velocity_range"] = {
             "x": (-0.01, 0.01),
             "y": (-0.01, 0.01),
         }
 
-        # # Base reset randomization
-        # self.events.reset_base.params = {
-        #     "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-        #     "velocity_range": {
-        #         "x": (-0.3, 0.3),
-        #         "y": (-0.3, 0.3),
-        #         "z": (-0.1, 0.1),
-        #         "roll": (-0.2, 0.2),
-        #         "pitch": (-0.2, 0.2),
-        #         "yaw": (-0.2, 0.2),
-        #     },
-        # }
-
-        # No reset randomization
+        # Base reset randomization
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "yaw": (-0.0, 0.0)},
             "velocity_range": {
-                "x": (-0.0, 0.0),
-                "y": (-0.0, 0.0),
-                "z": (-0.0, 0.0),
-                "roll": (-0.0, 0.0),
-                "pitch": (-0.0, 0.0),
-                "yaw": (-0.0, 0.0),
+                "x": (-0.3, 0.3),
+                "y": (-0.3, 0.3),
+                "z": (-0.1, 0.1),
+                "roll": (-0.2, 0.2),
+                "pitch": (-0.2, 0.2),
+                "yaw": (-0.2, 0.2),
             },
         }
 
-        # # IMU offset pos and rot randomization
-        # self.events.randomize_imu_mount = EventTerm(
-        #     func=randomize_imu_mount,
-        #     mode="reset",
-        #     params={
-        #         "sensor_cfg": SceneEntityCfg("imu"),
-        #         "pos_range": {
-        #             "x": (-0.05, 0.05),
-        #             "y": (-0.05, 0.05),
-        #             "z": (-0.05, 0.05),
-        #         },
-        #         "rot_range": {
-        #             "roll": (-0.1, 0.1),
-        #             "pitch": (-0.1, 0.1),
-        #             "yaw": (-0.1, 0.1),
-        #         },
-        #     },
-        # )
+        # IMU offset pos and rot randomization
+        self.events.randomize_imu_mount = EventTerm(
+            func=randomize_imu_mount,
+            mode="reset",
+            params={
+                "sensor_cfg": SceneEntityCfg("imu"),
+                "pos_range": {
+                    "x": (-0.05, 0.05),
+                    "y": (-0.05, 0.05),
+                    "z": (-0.05, 0.05),
+                },
+                "rot_range": {
+                    "roll": (-0.1, 0.1),
+                    "pitch": (-0.1, 0.1),
+                    "yaw": (-0.1, 0.1),
+                },
+            },
+        )
 
         # I think this is because the "base" is not a rigid body in the robot asset
         self.events.add_base_mass = None
-        # self.events.base_com = None
-        self.events.base_com.params["asset_cfg"] = SceneEntityCfg("robot", body_names="Torso_Side_Right")
+        self.events.base_com = None
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
@@ -876,6 +851,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        self.commands.base_velocity.rel_standing_envs = 0.2
 
         # Terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = [
@@ -899,6 +875,54 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "KC_C_401R_R_UpForearmDrive",
             "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
         ]
+
+        # Apply randomization settings based on flag
+        if not self.enable_randomization:
+            self._disable_randomization()
+
+    def _disable_randomization(self):
+        """Disable all randomization for easy early training.
+
+        Use with command line arg: env.enable_randomization=false
+        """
+        
+        print("[INFO]: Disabling all domain randomization!\n" * 5, end="")
+
+        # Disable events
+        self.events.physics_material = None
+        self.events.add_limb_masses = None
+        self.events.randomize_actuator_gains = None
+        self.events.randomize_joint_properties = None
+        self.events.randomize_imu_mount = None
+
+        # Simple resets
+        self.events.reset_robot_joints.params.update(
+            {"position_range": (1.0, 1.0), "velocity_range": (0.0, 0.0)}
+        )
+        self.events.reset_robot_joints.func = mdp.reset_joints_by_scale
+        self.events.reset_base.params = {
+            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
+            "velocity_range": {
+                "x": (0.0, 0.0),
+                "y": (0.0, 0.0),
+                "z": (0.0, 0.0),
+                "roll": (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw": (0.0, 0.0),
+            },
+        }
+
+        # No pushes and push curriculum
+        self.events.push_robot = None
+        if hasattr(self.curriculum, "velocity_push_curriculum"):
+            self.curriculum.velocity_push_curriculum = None
+
+        # No actor observation noise
+        self.observations.policy.enable_corruption = False
+
+        # No foot impact penalty
+        if hasattr(self.rewards, "foot_impact_penalty"):
+            self.rewards.foot_impact_penalty = None
 
 
 @configclass
