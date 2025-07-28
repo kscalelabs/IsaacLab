@@ -83,7 +83,7 @@ class KBotRoughRNNPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class KBotRoughLSTMPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 3000
+    max_iterations = 300000
     save_interval = 50
     experiment_name = "kbot_rough_lstm"
     empirical_normalization = False

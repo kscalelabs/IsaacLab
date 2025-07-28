@@ -807,7 +807,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # I think this is because the "base" is not a rigid body in the robot asset
         self.events.add_base_mass = None
-        self.events.base_com = None
+        self.events.base_com.params["asset_cfg"] = SceneEntityCfg("robot", body_names="Torso_Side_Right")
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
