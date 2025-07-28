@@ -383,6 +383,54 @@ def contact_forces_l2_penalty(env: ManagerBasedRLEnv, threshold: float, sensor_c
     l2_penalty = torch.sum(torch.square(violations), dim=1) 
     return l2_penalty
 
+def foot_height_reward(
+    env: ManagerBasedRLEnv, 
+    asset_cfg: SceneEntityCfg, 
+    target_height: float, 
+    std: float, 
+    tanh_mult: float = 2.0
+) -> torch.Tensor:
+    """Reward the swinging feet for clearing a specified height off the ground.
+    
+    This function encourages the robot to lift its feet to a target height during swing phase.
+    The reward is only applied when the foot is moving (velocity-gated), ensuring it only 
+    rewards during swing and not stance phases.
+    
+    Args:
+        env: The environment instance
+        asset_cfg: Asset configuration for the robot with foot body names
+        target_height: Target foot height above ground (in meters)
+        std: Standard deviation for the exponential reward kernel
+        tanh_mult: Multiplier for velocity tanh to determine swing phase
+        
+    Returns:
+        Reward tensor based on foot height during swing phase. Shape is (num_envs,).
+    """
+    # Extract the robot asset
+    asset = env.scene[asset_cfg.name]
+    
+    # Get foot positions (z-coordinate is height)
+    foot_heights = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+    
+    # Calculate height error from target
+    height_error = torch.square(foot_heights - target_height)
+    
+    # Get foot horizontal velocity to determine if foot is in swing phase
+    foot_velocity_xy = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :2]
+    foot_speed = torch.norm(foot_velocity_xy, dim=-1)
+    
+    # Use tanh to create a smooth velocity gate (0 when stationary, 1 when moving fast)
+    velocity_gate = torch.tanh(tanh_mult * foot_speed)
+    
+    # Apply velocity gate to height error (only reward when foot is moving)
+    gated_error = height_error * velocity_gate
+    
+    # Sum across all feet and apply exponential kernel
+    total_error = torch.sum(gated_error, dim=1)
+    reward = torch.exp(-total_error / std)
+    
+    return reward
+
 def randomize_imu_mount(
     env: ManagerBasedEnv,
     env_ids: Optional[torch.Tensor],
@@ -464,8 +512,8 @@ CURRICULUM_START_STEP = 24 * 10   # 10
 CURRICULUM_END_STEP = 24 * 100   # 1000
 
 # Command curriculum timing constants
-COMMAND_CURRICULUM_START_STEP = 24 * 10   # 1000
-COMMAND_CURRICULUM_END_STEP = 24 * 20     # 1500
+COMMAND_CURRICULUM_START_STEP = 24 * 100   # 1000
+COMMAND_CURRICULUM_END_STEP = 24 * 200     # 1500
 
 
 KBOT_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
@@ -542,14 +590,14 @@ class KBotRewards(RewardsCfg):
 
     feet_air_time = RewTerm(
         func=mdp.feet_air_time_positive_biped,
-        weight=0.45,
+        weight=0.85,
         params={
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
                 body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
             ),
-            "threshold": 0.4,
+            "threshold": 0.8,
         },
     )
 
@@ -561,6 +609,19 @@ class KBotRewards(RewardsCfg):
                 "contact_forces",
                 body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
             ),
+            "asset_cfg": SceneEntityCfg(
+                "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+            ),
+        },
+    )
+
+    foot_height = RewTerm(
+        func=foot_height_reward,
+        weight=0.5,
+        params={
+            "target_height": 0.15,  # 15cm target height for swing phase
+            "std": 0.05,           # Standard deviation for exponential kernel
+            "tanh_mult": 2.0,      # Velocity multiplier for swing detection
             "asset_cfg": SceneEntityCfg(
                 "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
             ),
@@ -580,7 +641,7 @@ class KBotRewards(RewardsCfg):
 
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.5,
+        weight=-0.8,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -648,16 +709,16 @@ class KBotRewards(RewardsCfg):
         },
     )
     
-    foot_collision_explicit = RewTerm(
-        func=mdp.body_distance_penalty,
-        weight=-2.0,
-        params={
-            "min_distance": 0.3,
-            "asset_cfg": SceneEntityCfg("robot"),
-            "body_a_names": ["KB_D_501L_L_LEG_FOOT"],  # Left foot
-            "body_b_names": ["KB_D_501R_R_LEG_FOOT"],  # Right foot
-        },
-    )
+    # foot_collision_explicit = RewTerm(
+    #     func=mdp.body_distance_penalty,
+    #     weight=-2.0,
+    #     params={
+    #         "min_distance": 0.3,
+    #         "asset_cfg": SceneEntityCfg("robot"),
+    #         "body_a_names": ["KB_D_501L_L_LEG_FOOT"],  # Left foot
+    #         "body_b_names": ["KB_D_501R_R_LEG_FOOT"],  # Right foot
+    #     },
+    # )
     
     # Action smoothness penalty
     action_acceleration_l2 = RewTerm(
@@ -848,8 +909,8 @@ class KBotCurriculumCfg(CurriculumCfg):
         func=unified_command_curriculum,
         params={
             "initial_ranges": {
-                "lin_vel_x": (-0.25, 0.25),
-                "lin_vel_y": (-0.25, 0.25),
+                "lin_vel_x": (-0.5, 0.5),
+                "lin_vel_y": (-0.5, 0.5),
                 "ang_vel_z": (-0.1, 0.1),
             },
             "target_ranges": {
@@ -924,7 +985,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             mode="interval",
             interval_range_s=(15.0, 30.0),
             params={
-                "jump_height_range": (0.3, 1.0),
+                "jump_height_range": (0.1, 0.3),
                 "asset_cfg": SceneEntityCfg("robot"),
             },
         )
@@ -987,8 +1048,8 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             mode="reset",
             params={
                 "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-                "armature_distribution_params": (0.1, 10.0),
-                "friction_distribution_params": (0.1, 10.0),
+                "armature_distribution_params": (0.5, 4.0),
+                "friction_distribution_params": (0.5, 4.0),
                 "operation": "scale",
             },
         )
@@ -1054,8 +1115,8 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             ],
         )
         
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.25, 0.25)  # Curriculum will gradually increase to (-2.0, 2.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.25, 0.25)  # Curriculum will gradually increase to (-1.5, 1.5)
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 0.5)  # Curriculum will gradually increase to (-2.0, 2.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)  # Curriculum will gradually increase to (-1.5, 1.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-0.1, 0.1)    # Curriculum will gradually increase to (-1.0, 1.0)
 
         # Terminations
