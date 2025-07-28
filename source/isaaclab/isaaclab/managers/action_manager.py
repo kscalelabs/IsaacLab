@@ -182,6 +182,8 @@ class ActionManager(ManagerBase):
         Args:
             cfg: The configuration object or dictionary (``dict[str, ActionTermCfg]``).
             env: The environment instance.
+            action_history_length: Number of past actions to store in history buffer. 
+                If 0, no history buffer is created. Defaults to 0.
 
         Raises:
             ValueError: If the configuration is None.
@@ -190,11 +192,27 @@ class ActionManager(ManagerBase):
         if cfg is None:
             raise ValueError("Action manager configuration is None. Please provide a valid configuration.")
 
+
+        if hasattr(cfg, "action_history_length"):
+            # store history length
+            self._action_history_length = cfg.action_history_length
+        else:
+            self._action_history_length = 0
+
         # call the base class constructor (this prepares the terms)
         super().__init__(cfg, env)
         # create buffers to store actions
         self._action = torch.zeros((self.num_envs, self.total_action_dim), device=self.device)
         self._prev_action = torch.zeros_like(self._action)
+        
+        # create action history buffer if requested
+        if self._action_history_length > 0:
+            self._action_history = torch.zeros(
+                (self.num_envs, self._action_history_length, self.total_action_dim), 
+                device=self.device
+            )
+        else:
+            self._action_history = None
 
         # check if any term has debug visualization implemented
         self.cfg.debug_vis = False
@@ -204,6 +222,10 @@ class ActionManager(ManagerBase):
     def __str__(self) -> str:
         """Returns: A string representation for action manager."""
         msg = f"<ActionManager> contains {len(self._term_names)} active terms.\n"
+        
+        # add action history info if enabled
+        if self._action_history_length > 0:
+            msg += f"Action history buffer: {self._action_history_length} steps (shape: {self._action_history.shape})\n"
 
         # create table for term information
         table = PrettyTable()
@@ -249,6 +271,20 @@ class ActionManager(ManagerBase):
     def prev_action(self) -> torch.Tensor:
         """The previous actions sent to the environment. Shape is (num_envs, total_action_dim)."""
         return self._prev_action
+
+    @property
+    def action_history(self) -> torch.Tensor | None:
+        """The action history buffer. Shape is (num_envs, history_length, total_action_dim).
+        
+        Returns None if no history buffer was created (history_length = 0).
+        History is ordered from oldest (index 0) to newest (index -1).
+        """
+        return self._action_history
+
+    @property
+    def action_history_length(self) -> int:
+        """The length of the action history buffer."""
+        return self._action_history_length
 
     @property
     def has_debug_vis_implementation(self) -> bool:
@@ -309,6 +345,9 @@ class ActionManager(ManagerBase):
         # reset the action history
         self._prev_action[env_ids] = 0.0
         self._action[env_ids] = 0.0
+        # reset action history buffer if it exists
+        if self._action_history is not None:
+            self._action_history[env_ids] = 0.0
         # reset all action terms
         for term in self._terms.values():
             term.reset(env_ids=env_ids)
@@ -330,6 +369,14 @@ class ActionManager(ManagerBase):
         # store the input actions
         self._prev_action[:] = self._action
         self._action[:] = action.to(self.device)
+
+        # update action history buffer if it exists
+        if self._action_history is not None:
+            # shift history to the left (oldest action is discarded)
+            if self._action_history_length > 1:
+                self._action_history[:, :-1] = self._action_history[:, 1:]
+            # add current action to the end of history
+            self._action_history[:, -1] = self._action
 
         # split the actions and apply to each tensor
         idx = 0
@@ -357,6 +404,32 @@ class ActionManager(ManagerBase):
             The action term with the specified name.
         """
         return self._terms[name]
+    
+    def get_action_from_history(self, steps_back: int = 0) -> torch.Tensor | None:
+        """Get actions from the history buffer.
+        
+        Args:
+            steps_back: Number of steps back to retrieve (0 = most recent, 1 = one step back, etc.).
+                Must be less than action_history_length.
+                
+        Returns:
+            Action tensor of shape (num_envs, total_action_dim) or None if no history buffer exists.
+            
+        Raises:
+            ValueError: If steps_back is invalid.
+        """
+        if self._action_history is None:
+            return None
+            
+        if steps_back < 0 or steps_back >= self._action_history_length:
+            raise ValueError(
+                f"steps_back must be between 0 and {self._action_history_length - 1}, got {steps_back}"
+            )
+            
+        # History is ordered from oldest (index 0) to newest (index -1)
+        # So steps_back=0 corresponds to index -1, steps_back=1 to index -2, etc.
+        history_index = -(steps_back + 1)
+        return self._action_history[:, history_index]
 
     def serialize(self) -> dict:
         """Serialize the action manager configuration.
@@ -384,6 +457,9 @@ class ActionManager(ManagerBase):
         for term_name, term_cfg in cfg_items:
             # check if term config is None
             if term_cfg is None:
+                continue
+            # skip special configuration parameters that are not action terms
+            if term_name in ['action_history_length']:
                 continue
             # check valid type
             if not isinstance(term_cfg, ActionTermCfg):

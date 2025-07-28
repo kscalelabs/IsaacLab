@@ -181,6 +181,20 @@ _JOINT_META = {
 
 # Build one ImplicitActuatorCfg per joint
 # If sim dt is 0.005 seconds (5 milliseconds), then max_delay=8 means 40ms delay
+# # Build one ImplicitActuatorCfg per joint
+# _ACTUATORS = {
+#     jn: ImplicitActuatorCfg(
+#         joint_names_expr=[jn],
+#         effort_limit=meta["torque"],
+#         velocity_limit=meta["vmax"],
+#         stiffness={jn: meta["kp"]},
+#         damping={jn: meta["kd"]},
+#         armature=meta["arm"],
+#     )
+#     for jn, meta in _JOINT_META.items()
+# }
+
+# Build one DelayedPDActuatorCfg per joint
 _ACTUATORS = {
     jn: DelayedPDActuatorCfg(
         joint_names_expr=[jn],
@@ -190,7 +204,7 @@ _ACTUATORS = {
         damping={jn: meta["kd"]},
         armature=meta["arm"],
         min_delay=0,
-        max_delay=4, 
+        max_delay=4,
     )
     for jn, meta in _JOINT_META.items()
 }

@@ -30,6 +30,100 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     LocomotionVelocityRoughEnvCfg,
     RewardsCfg,
 )
+from isaaclab.envs import ManagerBasedRLEnv
+
+
+def action_acceleration_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Penalize the acceleration (second derivative) of actions using L2 squared kernel.
+    
+    Requires action history length >= 2 to calculate acceleration.
+    If insufficient history, returns zeros.
+    """
+    # Check if we have enough action history
+    if env.action_manager.action_history_length < 2:
+        return torch.zeros(env.num_envs, device=env.device)
+    
+    # Get action history: current, 1 step back, 2 steps back
+    current_action = env.action_manager.action  # t
+    prev_action_1 = env.action_manager.get_action_from_history(steps_back=0)  # t-1 (most recent in history)
+    prev_action_2 = env.action_manager.get_action_from_history(steps_back=1)  # t-2
+    
+    # Calculate action velocity (first derivative)
+    action_vel_current = current_action - prev_action_1  # v(t) = a(t) - a(t-1)
+    action_vel_prev = prev_action_1 - prev_action_2      # v(t-1) = a(t-1) - a(t-2)
+    
+    # Calculate action acceleration (second derivative)  
+    action_acceleration = action_vel_current - action_vel_prev  # acc(t) = v(t) - v(t-1)
+    
+    # Return L2 squared penalty
+    return torch.sum(torch.square(action_acceleration), dim=1)
+
+
+def contact_forces_l2_penalty(env: ManagerBasedRLEnv, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Penalize contact forces using L2 squared penalty above threshold.
+    
+    Computes L2 norm of contact force vector, then applies squared penalty for violations above threshold.
+    """
+    # Extract contact sensor data
+    contact_sensor = env.scene.sensors[sensor_cfg.name]
+    net_contact_forces = contact_sensor.data.net_forces_w_history
+    
+    current_force_magnitudes = torch.norm(net_contact_forces[:, 0, sensor_cfg.body_ids], dim=-1)
+    
+    # Compute violation above threshold
+    violations = torch.clamp(current_force_magnitudes - threshold, min=0.0)
+    
+    l2_penalty = torch.sum(torch.square(violations), dim=1) 
+    return l2_penalty
+
+
+def foot_height_reward(
+    env: ManagerBasedRLEnv, 
+    asset_cfg: SceneEntityCfg, 
+    target_height: float, 
+    std: float, 
+    tanh_mult: float = 2.0
+) -> torch.Tensor:
+    """Reward the swinging feet for clearing a specified height off the ground.
+    
+    This function encourages the robot to lift its feet to a target height during swing phase.
+    The reward is only applied when the foot is moving (velocity-gated), ensuring it only 
+    rewards during swing and not stance phases.
+    
+    Args:
+        env: The environment instance
+        asset_cfg: Asset configuration for the robot with foot body names
+        target_height: Target foot height above ground (in meters)
+        std: Standard deviation for the exponential reward kernel
+        tanh_mult: Multiplier for velocity tanh to determine swing phase
+        
+    Returns:
+        Reward tensor based on foot height during swing phase. Shape is (num_envs,).
+    """
+    # Extract the robot asset
+    asset = env.scene[asset_cfg.name]
+    
+    # Get foot positions (z-coordinate is height)
+    foot_heights = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+    
+    # Calculate height error from target
+    height_error = torch.square(foot_heights - target_height)
+    
+    # Get foot horizontal velocity to determine if foot is in swing phase
+    foot_velocity_xy = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :2]
+    foot_speed = torch.norm(foot_velocity_xy, dim=-1)
+    
+    # Use tanh to create a smooth velocity gate (0 when stationary, 1 when moving fast)
+    velocity_gate = torch.tanh(tanh_mult * foot_speed)
+    
+    # Apply velocity gate to height error (only reward when foot is moving)
+    gated_error = height_error * velocity_gate
+    
+    # Sum across all feet and apply exponential kernel
+    total_error = torch.sum(gated_error, dim=1)
+    reward = torch.exp(-total_error / std)
+    
+    return reward
 
 
 def randomize_imu_mount(
@@ -231,6 +325,19 @@ class KBotRewards(RewardsCfg):
         },
     )
 
+    foot_height = RewTerm(
+        func=foot_height_reward,
+        weight=0.5,
+        params={
+            "target_height": 0.2,  # 15cm target height for swing phase
+            "std": 0.05,           # Standard deviation for exponential kernel
+            "tanh_mult": 2.0,      # Velocity multiplier for swing detection
+            "asset_cfg": SceneEntityCfg(
+                "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+            ),
+        },
+    )
+
     # Joint-limit & deviation penalties
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
@@ -292,13 +399,13 @@ class KBotRewards(RewardsCfg):
                 "robot",
                 joint_names=[
                     # left arm
-                    "dof_left_shoulder_pitch_03",
+                    # "dof_left_shoulder_pitch_03",
                     "dof_left_shoulder_roll_03",
                     "dof_left_shoulder_yaw_02",
                     "dof_left_elbow_02",
                     "dof_left_wrist_00",
                     # right arm
-                    "dof_right_shoulder_pitch_03",
+                    # "dof_right_shoulder_pitch_03",
                     "dof_right_shoulder_roll_03",
                     "dof_right_shoulder_yaw_02",
                     "dof_right_elbow_02",
@@ -307,6 +414,39 @@ class KBotRewards(RewardsCfg):
             )
         },
     )
+
+    joint_deviation_shoulder_pitch = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.4,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    "dof_left_shoulder_pitch_03",
+                    "dof_right_shoulder_pitch_03",
+                ],
+            )
+        },
+    )
+
+    # Action smoothness penalty
+    action_acceleration_l2 = RewTerm(
+        func=action_acceleration_l2,
+        weight=-0.1,
+    )
+
+    # Foot contact force penalty - L2 penalty above threshold
+    # foot_contact_force_l2 = RewTerm(
+    #     func=contact_forces_l2_penalty,
+    #     weight=-1.0e-7,
+    #     params={
+    #         "threshold": 360.0,
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "contact_forces",
+    #             body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+    #         ),
+    #     },
+    # )
 
     # No stomping reward
     # Foot-impact regulariser (discourages stomping)
@@ -471,9 +611,7 @@ class KBotObservations:
             params={"asset_cfg": SceneEntityCfg("imu")},
             noise=Unoise(n_min=-0.1, n_max=0.1),
         )
-        # No past actions for rnn
         # actions = ObsTerm(func=mdp.last_action)
-
         # No linear acceleration for now
         # imu_lin_acc = ObsTerm(
         #     func=mdp.imu_lin_acc,
@@ -669,7 +807,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # I think this is because the "base" is not a rigid body in the robot asset
         self.events.add_base_mass = None
-        self.events.base_com = None
+        self.events.base_com.params["asset_cfg"] = SceneEntityCfg("robot", body_names="Torso_Side_Right")
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
@@ -786,6 +924,13 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         if hasattr(self.rewards, "foot_impact_penalty"):
             self.rewards.foot_impact_penalty = None
 
+        # Remove actuator latency
+        for act_cfg in self.scene.robot.actuators.values():
+            if hasattr(act_cfg, "min_delay"):
+                act_cfg.min_delay = 0
+            if hasattr(act_cfg, "max_delay"):
+                act_cfg.max_delay = 0
+
 
 @configclass
 class KBotRoughEnvCfg_PLAY(KBotRoughEnvCfg):
@@ -805,8 +950,8 @@ class KBotRoughEnvCfg_PLAY(KBotRoughEnvCfg):
             self.scene.terrain.terrain_generator.num_cols = 5
             self.scene.terrain.terrain_generator.curriculum = False
 
-        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.5, 1.5)
+        self.commands.base_velocity.ranges.lin_vel_y = (-1.5, 1.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         # disable randomization for play
