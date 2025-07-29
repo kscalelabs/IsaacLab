@@ -496,6 +496,25 @@ class KBotRewards(RewardsCfg):
 
 
 @configclass
+class KBotTerminationsCfg:
+    """Termination terms for the MDP."""
+
+    time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    base_contact = DoneTerm(
+        func=mdp.illegal_contact,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"),
+            "threshold": 1.0,
+        },
+    )
+    terrain_out_of_bounds = DoneTerm(
+        func=mdp.terrain_out_of_bounds,
+        params={"asset_cfg": SceneEntityCfg("robot"), "distance_buffer": 3.0},
+        time_out=True,
+    )
+
+
+@configclass
 class KBotObservations:
     @configclass
     class CriticCfg(ObservationGroupCfg):
@@ -660,6 +679,7 @@ class KBotCurriculumCfg:
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     enable_randomization: bool = True
     rewards: KBotRewards = KBotRewards()
+    terminations: KBotTerminationsCfg = KBotTerminationsCfg()
     observations: KBotObservations = KBotObservations()
     curriculum: KBotCurriculumCfg = KBotCurriculumCfg()
 
@@ -817,7 +837,9 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # I think this is because the "base" is not a rigid body in the robot asset
         self.events.add_base_mass = None
-        self.events.base_com.params["asset_cfg"] = SceneEntityCfg("robot", body_names="Torso_Side_Right")
+        self.events.base_com.params["asset_cfg"] = SceneEntityCfg(
+            "robot", body_names="Torso_Side_Right"
+        )
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
@@ -895,7 +917,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         Use with command line arg: env.enable_randomization=false
         """
-        
+
         print("[INFO]: Disabling all domain randomization!\n" * 5, end="")
 
         # Disable events
