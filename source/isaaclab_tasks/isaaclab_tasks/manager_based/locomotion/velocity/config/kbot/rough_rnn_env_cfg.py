@@ -299,6 +299,16 @@ class KBotRewards(RewardsCfg):
         params={"command_name": "base_velocity", "std": 0.5},
     )
 
+    track_height = RewTerm(
+        func=mdp.base_height_l2,
+        weight=-1.0,
+        params={
+            "target_height": 1.05,
+            "asset_cfg": SceneEntityCfg("robot"),
+            "sensor_cfg": SceneEntityCfg("height_scanner"),
+        },
+    )
+
     feet_air_time = RewTerm(
         func=mdp.feet_air_time_positive_biped,
         weight=0.25,
@@ -325,18 +335,18 @@ class KBotRewards(RewardsCfg):
         },
     )
 
-    foot_height = RewTerm(
-        func=foot_height_reward,
-        weight=0.5,
-        params={
-            "target_height": 0.2,  # 15cm target height for swing phase
-            "std": 0.05,           # Standard deviation for exponential kernel
-            "tanh_mult": 2.0,      # Velocity multiplier for swing detection
-            "asset_cfg": SceneEntityCfg(
-                "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
-            ),
-        },
-    )
+    # foot_height = RewTerm(
+    #     func=foot_height_reward,
+    #     weight=0.5,
+    #     params={
+    #         "target_height": 0.2,  # 15cm target height for swing phase
+    #         "std": 0.05,           # Standard deviation for exponential kernel
+    #         "tanh_mult": 2.0,      # Velocity multiplier for swing detection
+    #         "asset_cfg": SceneEntityCfg(
+    #             "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+    #         ),
+    #     },
+    # )
 
     # Joint-limit & deviation penalties
     dof_pos_limits = RewTerm(
