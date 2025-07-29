@@ -5,6 +5,7 @@
 # Or you can omit the checkpoint arg and it will use the latest checkpoint in the logs/rsl_rl/agent_name/ directory
 import argparse
 import os
+import zipfile
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser()
@@ -320,12 +321,35 @@ def main():
 
     kinfer_blob = pack(init_fn=init_onnx, step_fn=step_onnx, metadata=metadata)
 
-    output_path = Path(checkpoint_path).with_suffix(".kinfer")
+    # Create filename with the run name
+    checkpoint_path_obj = Path(checkpoint_path)
+    run_timestamp = checkpoint_path_obj.parent.name
+    model_name = checkpoint_path_obj.stem
+    kinfer_filename = f"{run_timestamp}_{model_name}.kinfer"
+    output_path = checkpoint_path_obj.parent / kinfer_filename
+    
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "wb") as f:
         f.write(kinfer_blob)
 
     print(f"[OK] Export completed → {output_path}")
+
+    # Create zip file of params folder if it exists
+    params_folder = checkpoint_path_obj.parent / "params"
+    if params_folder.exists() and params_folder.is_dir():
+        params_zip_filename = f"{run_timestamp}_params.zip"
+        params_zip_path = checkpoint_path_obj.parent / params_zip_filename
+        
+        with zipfile.ZipFile(params_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file_path in params_folder.rglob('*'):
+                if file_path.is_file():
+                    # Add file to zip with relative path from params folder
+                    arcname = file_path.relative_to(params_folder)
+                    zipf.write(file_path, arcname)
+        
+        print(f"[OK] Params zip created → {params_zip_path}")
+    else:
+        print("[INFO] No params folder found to zip")
 
     env.close()
 
