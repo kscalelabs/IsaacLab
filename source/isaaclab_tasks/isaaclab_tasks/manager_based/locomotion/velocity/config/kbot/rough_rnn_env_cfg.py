@@ -80,48 +80,50 @@ def contact_forces_l2_penalty(env: ManagerBasedRLEnv, threshold: float, sensor_c
 def foot_height_reward(
     env: ManagerBasedRLEnv, 
     asset_cfg: SceneEntityCfg, 
+    contact_sensor_cfg: SceneEntityCfg,
     target_height: float, 
-    std: float, 
-    tanh_mult: float = 2.0
+    std: float,
+    ground_offset: float = 0.1
 ) -> torch.Tensor:
     """Reward the swinging feet for clearing a specified height off the ground.
-    
-    This function encourages the robot to lift its feet to a target height during swing phase.
-    The reward is only applied when the foot is moving (velocity-gated), ensuring it only 
-    rewards during swing and not stance phases.
-    
+        
     Args:
         env: The environment instance
         asset_cfg: Asset configuration for the robot with foot body names
+        contact_sensor_cfg: Contact sensor configuration for detecting foot contact
         target_height: Target foot height above ground (in meters)
         std: Standard deviation for the exponential reward kernel
-        tanh_mult: Multiplier for velocity tanh to determine swing phase
+        ground_offset: Estimated offset from base to ground level (in meters)
         
     Returns:
         Reward tensor based on foot height during swing phase. Shape is (num_envs,).
     """
-    # Extract the robot asset
+    # Extract the robot asset and contact sensor
     asset = env.scene[asset_cfg.name]
+    contact_sensor = env.scene.sensors[contact_sensor_cfg.name]
     
-    # Get foot positions (z-coordinate is height)
-    foot_heights = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+    # Get foot heights and base height (all vectorized)
+    foot_heights = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]  # (num_envs, num_feet)
+    base_height = asset.data.root_pos_w[:, 2]  # (num_envs,)
     
-    # Calculate height error from target
-    height_error = torch.square(foot_heights - target_height)
+    # Estimate ground level as base height minus offset
+    ground_level = base_height - ground_offset  # (num_envs,)
     
-    # Get foot horizontal velocity to determine if foot is in swing phase
-    foot_velocity_xy = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :2]
-    foot_speed = torch.norm(foot_velocity_xy, dim=-1)
+    # Calculate relative foot height above ground
+    relative_heights = foot_heights - ground_level.unsqueeze(1)  # (num_envs, num_feet)
     
-    # Use tanh to create a smooth velocity gate (0 when stationary, 1 when moving fast)
-    velocity_gate = torch.tanh(tanh_mult * foot_speed)
+    # Detect swing phase using contact forces (vectorized)
+    contact_forces = contact_sensor.data.net_forces_w_history[:, 0, contact_sensor_cfg.body_ids, :]
+    is_in_contact = torch.norm(contact_forces, dim=-1) > 10.0  # (num_envs, num_feet)
+    is_in_swing = ~is_in_contact
     
-    # Apply velocity gate to height error (only reward when foot is moving)
-    gated_error = height_error * velocity_gate
+    # Calculate height error only for swinging feet
+    height_error = torch.square(relative_heights - target_height)  # (num_envs, num_feet)
+    swing_gated_error = height_error * is_in_swing.float()
     
-    # Sum across all feet and apply exponential kernel
-    total_error = torch.sum(gated_error, dim=1)
-    reward = torch.exp(-total_error / std)
+    # Sum error across feet and apply exponential reward
+    total_error = torch.sum(swing_gated_error, dim=1)  # (num_envs,)
+    reward = torch.exp(-total_error / (std**2))
     
     return reward
 
@@ -290,12 +292,12 @@ class KBotRewards(RewardsCfg):
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=2.0,
+        weight=2.5,
         params={"command_name": "base_velocity", "std": 0.5},
     )
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
-        weight=1.0,
+        weight=2.0,
         params={"command_name": "base_velocity", "std": 0.5},
     )
 
@@ -327,13 +329,17 @@ class KBotRewards(RewardsCfg):
 
     foot_height = RewTerm(
         func=foot_height_reward,
-        weight=0.5,
+        weight=0.8,
         params={
-            "target_height": 0.2,  # 15cm target height for swing phase
+            "target_height": 0.15,  # 15cm target height for swing phase
             "std": 0.05,           # Standard deviation for exponential kernel
-            "tanh_mult": 2.0,      # Velocity multiplier for swing detection
+            "ground_offset": 0.1,   # Estimated offset from base to ground (10cm)
             "asset_cfg": SceneEntityCfg(
                 "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+            ),
+            "contact_sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
             ),
         },
     )
@@ -436,53 +442,53 @@ class KBotRewards(RewardsCfg):
     )
 
     # Foot contact force penalty - L2 penalty above threshold
-    # foot_contact_force_l2 = RewTerm(
-    #     func=contact_forces_l2_penalty,
-    #     weight=-1.0e-7,
-    #     params={
-    #         "threshold": 360.0,
-    #         "sensor_cfg": SceneEntityCfg(
-    #             "contact_forces",
-    #             body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
-    #         ),
-    #     },
-    # )
-
-    # No stomping reward
-    # Foot-impact regulariser (discourages stomping)
-    foot_impact_penalty = RewTerm(
-        func=mdp.contact_forces,
-        weight=-1.5e-3,
+    foot_contact_force_l2 = RewTerm(
+        func=contact_forces_l2_penalty,
+        weight=-1.0e-7,
         params={
-            "threshold": 358.0,  # Manually checked static load of the kbot while standing
+            "threshold": 360.0,
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=[
-                    "KB_D_501L_L_LEG_FOOT",
-                    "KB_D_501R_R_LEG_FOOT",
-                    "Torso_Side_Right",
-                    "KC_D_102L_L_Hip_Yoke_Drive",
-                    "RS03_5",
-                    "KC_D_301L_L_Femur_Lower_Drive",
-                    "KC_D_401L_L_Shin_Drive",
-                    "KC_C_104L_PitchHardstopDriven",
-                    "RS03_6",
-                    "KC_C_202L",
-                    "KC_C_401L_L_UpForearmDrive",
-                    "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
-                    "KC_D_102R_R_Hip_Yoke_Drive",
-                    "RS03_4",
-                    "KC_D_301R_R_Femur_Lower_Drive",
-                    "KC_D_401R_R_Shin_Drive",
-                    "KC_C_104R_PitchHardstopDriven",
-                    "RS03_3",
-                    "KC_C_202R",
-                    "KC_C_401R_R_UpForearmDrive",
-                    "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
-                ],
+                body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
             ),
         },
     )
+
+    # No stomping reward
+    # Foot-impact regulariser (discourages stomping)
+    # foot_impact_penalty = RewTerm(
+    #     func=mdp.contact_forces,
+    #     weight=-1.5e-3,
+    #     params={
+    #         "threshold": 358.0,  # Manually checked static load of the kbot while standing
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "contact_forces",
+    #             body_names=[
+    #                 "KB_D_501L_L_LEG_FOOT",
+    #                 "KB_D_501R_R_LEG_FOOT",
+    #                 "Torso_Side_Right",
+    #                 "KC_D_102L_L_Hip_Yoke_Drive",
+    #                 "RS03_5",
+    #                 "KC_D_301L_L_Femur_Lower_Drive",
+    #                 "KC_D_401L_L_Shin_Drive",
+    #                 "KC_C_104L_PitchHardstopDriven",
+    #                 "RS03_6",
+    #                 "KC_C_202L",
+    #                 "KC_C_401L_L_UpForearmDrive",
+    #                 "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+    #                 "KC_D_102R_R_Hip_Yoke_Drive",
+    #                 "RS03_4",
+    #                 "KC_D_301R_R_Femur_Lower_Drive",
+    #                 "KC_D_401R_R_Shin_Drive",
+    #                 "KC_C_104R_PitchHardstopDriven",
+    #                 "RS03_3",
+    #                 "KC_C_202R",
+    #                 "KC_C_401R_R_UpForearmDrive",
+    #                 "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+    #             ],
+    #         ),
+    #     },
+    # )
 
 
 @configclass
@@ -848,9 +854,10 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # Commands
-        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.5, 1.5)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        self.commands.base_velocity.resampling_time_range = (0.5, 10.0)
         self.commands.base_velocity.rel_standing_envs = 0.2
 
         # Terminations
