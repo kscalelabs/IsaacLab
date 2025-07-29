@@ -1,11 +1,13 @@
 """Rough terrain locomotion environment config for kbot."""
 
+import math
 from typing import Dict, Optional, Tuple
+from collections.abc import Sequence
+from dataclasses import MISSING
 
 import torch
 
 import isaaclab.terrains as terrain_gen
-import isaaclab.utils.math as math_utils
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import (
@@ -19,11 +21,16 @@ from isaaclab.managers import (
     SceneEntityCfg,
     TerminationTermCfg,
     TerminationTermCfg as DoneTerm,
+    CommandTerm,
+    CommandTermCfg,
 )
 from isaaclab.sensors import ImuCfg
 from isaaclab.terrains.terrain_generator_cfg import TerrainGeneratorCfg
 from isaaclab.utils import configclass
-from isaaclab.utils.math import quat_from_euler_xyz
+from isaaclab.utils.math import quat_from_euler_xyz, quat_unique
+
+
+
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from isaaclab_assets import KBOT_CFG
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
@@ -31,6 +38,238 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     RewardsCfg,
 )
 from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.assets import Articulation
+from isaaclab.markers import VisualizationMarkers
+
+def quat_to_euler_xyz(quat: torch.Tensor) -> torch.Tensor:
+    """Convert quaternion to Euler angles (roll, pitch, yaw).
+    
+    Args:
+        quat: Quaternion tensor in (w, x, y, z) format. Shape: (..., 4)
+        
+    Returns:
+        Euler angles tensor in (roll, pitch, yaw) format. Shape: (..., 3)
+    """
+    # Extract quaternion components
+    w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
+    
+    # Roll (x-axis rotation)
+    roll = torch.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
+    
+    # Pitch (y-axis rotation)
+    sin_pitch = 2 * (w * y - z * x)
+    sin_pitch = torch.clamp(sin_pitch, -1.0, 1.0)  # Clamp to handle numerical errors
+    pitch = torch.asin(sin_pitch)
+    
+    # Yaw (z-axis rotation)
+    yaw = torch.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+    
+    # Stack and return
+    return torch.stack([roll, pitch, yaw], dim=-1)
+@configclass
+class UniformHeightCommandCfg(CommandTermCfg):
+    """Configuration for uniform height command generator.
+    
+    Uses height scanner position as the robot's current height and compares it
+    against terrain height + absolute height command.
+    """
+    
+    class_type: type = MISSING  # Will be set to UniformHeightCommand
+    
+    asset_name: str = MISSING
+    """Name of the robot asset in the scene (used for reference only)."""
+    
+    scanner_cfg: SceneEntityCfg = MISSING
+    """Configuration for the height scanner to measure terrain height and current position."""
+    
+    @configclass
+    class Ranges:
+        """Ranges for the height command."""
+        height: tuple[float, float] = MISSING
+        """Range for absolute height above terrain (in meters)."""
+    
+    ranges: Ranges = MISSING
+    """Distribution ranges for absolute height commands above terrain."""
+
+
+@configclass 
+class UniformOrientationCommandCfg(CommandTermCfg):
+    """Configuration for uniform orientation command generator.
+    
+    Generates Euler angle commands (roll, pitch, yaw) with a configurable 
+    probability of issuing zero commands for neutral orientation practice.
+    """
+    
+    class_type: type = MISSING  # Will be set to UniformOrientationCommand
+    
+    asset_name: str = MISSING
+    """Name of the robot asset in the scene."""
+    
+    body_name: str = MISSING
+    """Name of the body for which the command is generated."""
+    
+    zero_command_prob: float = 0.3
+    """Probability of generating zero orientation command (neutral pose)."""
+    
+    @configclass
+    class Ranges:
+        """Ranges for the orientation command."""
+        roll: tuple[float, float] = MISSING
+        """Range for the roll angle (in radians)."""
+        pitch: tuple[float, float] = MISSING 
+        """Range for the pitch angle (in radians)."""
+        yaw: tuple[float, float] = MISSING
+        """Range for the yaw angle (in radians)."""
+    
+    ranges: Ranges = MISSING
+    """Distribution ranges for the orientation commands."""
+
+
+class UniformHeightCommand(CommandTerm):
+    """Command generator for generating height commands uniformly.
+    
+    The command generator generates absolute height commands by sampling uniformly 
+    within specified ranges for height above terrain.
+    Uses the height scanner position as the robot's current height.
+    """
+    
+    cfg: UniformHeightCommandCfg
+    """Configuration for the command generator."""
+    
+    def __init__(self, cfg: UniformHeightCommandCfg, env: ManagerBasedEnv):
+        """Initialize the command generator class.
+        
+        Args:
+            cfg: The configuration parameters for the command generator.
+            env: The environment object.
+        """
+        # initialize the base class
+        super().__init__(cfg, env)
+        
+        # extract height scanner (used for both terrain measurement and current position)
+        self.height_scanner = env.scene.sensors[cfg.scanner_cfg.name]
+        
+        # create buffers
+        # -- command: absolute height above terrain (1D)
+        self.height_command = torch.zeros(self.num_envs, 1, device=self.device)
+        # -- metrics
+        self.metrics["height_error"] = torch.zeros(self.num_envs, device=self.device)
+    
+    def __str__(self) -> str:
+        msg = "UniformHeightCommand:\n"
+        msg += f"\tCommand dimension: {tuple(self.command.shape[1:])}\n"
+        msg += f"\tResampling time range: {self.cfg.resampling_time_range}\n"
+        msg += f"\tHeight range: {self.cfg.ranges.height}m above terrain\n"
+        msg += f"\tUses height scanner position as current height\n"
+        return msg
+    
+    @property
+    def command(self) -> torch.Tensor:
+        """The desired height command. Shape is (num_envs, 1)."""
+        return self.height_command
+    
+    def _update_metrics(self):
+        # Get current scanner height (this is our "robot height")
+        current_height = self.height_scanner.data.pos_w[:, 2]
+        
+        terrain_height = torch.mean(self.height_scanner.data.ray_hits_w[..., 2], dim=-1)
+
+        target_height = terrain_height + self.height_command[:, 0]
+
+        # Compute height error
+        self.metrics["height_error"] = torch.abs(current_height - target_height)
+    
+    def _resample_command(self, env_ids: Sequence[int]):
+        # Sample new absolute height commands
+        r = torch.empty(len(env_ids), device=self.device)
+        self.height_command[env_ids, 0] = r.uniform_(*self.cfg.ranges.height)
+    
+    def _update_command(self):
+        pass
+
+class UniformOrientationCommand(CommandTerm):
+    """Command generator for generating orientation commands uniformly.
+    
+    The command generator generates orientation commands as Euler angles 
+    (roll, pitch, yaw) by sampling uniformly within specified ranges.
+    """
+    
+    cfg: UniformOrientationCommandCfg
+    """Configuration for the command generator."""
+    
+    def __init__(self, cfg: UniformOrientationCommandCfg, env: ManagerBasedEnv):
+        """Initialize the command generator class.
+        
+        Args:
+            cfg: The configuration parameters for the command generator.
+            env: The environment object.
+        """
+        # initialize the base class
+        super().__init__(cfg, env)
+        
+        # extract the robot and body index for which the command is generated
+        self.robot: Articulation = env.scene[cfg.asset_name]
+        self.body_idx = self.robot.find_bodies(cfg.body_name)[0][0]
+        
+        # create buffers
+        # command: orientation as Euler angles (roll, pitch, yaw)
+        self.orientation_command = torch.zeros(self.num_envs, 3, device=self.device)
+        self.metrics["orientation_error"] = torch.zeros(self.num_envs, device=self.device)
+    
+    def __str__(self) -> str:
+        msg = "UniformOrientationCommand:\n"
+        msg += f"\tCommand dimension: {tuple(self.command.shape[1:])}\n"
+        msg += f"\tResampling time range: {self.cfg.resampling_time_range}\n"
+        msg += f"\tZero command probability: {self.cfg.zero_command_prob * 100:.1f}%\n"
+        msg += f"\tOrientation ranges: roll={self.cfg.ranges.roll}, pitch={self.cfg.ranges.pitch}, yaw={self.cfg.ranges.yaw}\n"
+        return msg
+    
+    @property
+    def command(self) -> torch.Tensor:
+        """The desired orientation command as Euler angles (roll, pitch, yaw). Shape is (num_envs, 3)."""
+        return self.orientation_command
+    
+    def _update_metrics(self):
+        # Get current body orientation as quaternion
+        current_quat = self.robot.data.body_quat_w[:, self.body_idx]
+        
+        # Convert current quaternion to Euler angles
+        current_euler = quat_to_euler_xyz(current_quat)  # (num_envs, 3)
+        
+        # Target Euler angles
+        target_euler = self.orientation_command  # (num_envs, 3)
+        
+        euler_diff = torch.abs(current_euler - target_euler)
+        euler_diff = torch.min(euler_diff, 2 * math.pi - euler_diff)
+        
+        # Sum of absolute angular errors
+        self.metrics["orientation_error"] = torch.sum(euler_diff, dim=-1)
+    
+    def _resample_command(self, env_ids: Sequence[int]):
+        # Determine which environments get zero commands vs sampled commands
+        num_envs = len(env_ids)
+        random_vals = torch.rand(num_envs, device=self.device)
+        zero_mask = random_vals < self.cfg.zero_command_prob
+        sample_mask = ~zero_mask
+        
+        # Set zero commands for selected environments
+        if zero_mask.any():
+            zero_env_indices = torch.tensor(env_ids, device=self.device)[zero_mask]
+            self.orientation_command[zero_env_indices, :] = 0.0
+        
+        # Sample new orientation targets for remaining environments
+        if sample_mask.any():
+            sample_env_indices = torch.tensor(env_ids, device=self.device)[sample_mask]
+            self.orientation_command[sample_env_indices, 0].uniform_(*self.cfg.ranges.roll)   # roll
+            self.orientation_command[sample_env_indices, 1].uniform_(*self.cfg.ranges.pitch) # pitch
+            self.orientation_command[sample_env_indices, 2].uniform_(*self.cfg.ranges.yaw)   # yaw
+    
+    def _update_command(self):
+        pass
+
+
+# Set the class type after the class is defined  
+UniformOrientationCommandCfg.class_type = UniformOrientationCommand
 
 
 def action_acceleration_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
@@ -48,12 +287,9 @@ def action_acceleration_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
     prev_action_1 = env.action_manager.get_action_from_history(steps_back=0)  # t-1 (most recent in history)
     prev_action_2 = env.action_manager.get_action_from_history(steps_back=1)  # t-2
     
-    # Calculate action velocity (first derivative)
-    action_vel_current = current_action - prev_action_1  # v(t) = a(t) - a(t-1)
-    action_vel_prev = prev_action_1 - prev_action_2      # v(t-1) = a(t-1) - a(t-2)
-    
-    # Calculate action acceleration (second derivative)  
-    action_acceleration = action_vel_current - action_vel_prev  # acc(t) = v(t) - v(t-1)
+    action_vel_current = current_action - prev_action_1
+    action_vel_prev = prev_action_1 - prev_action_2
+    action_acceleration = action_vel_current - action_vel_prev
     
     # Return L2 squared penalty
     return torch.sum(torch.square(action_acceleration), dim=1)
@@ -127,6 +363,101 @@ def foot_height_reward(
     
     return reward
 
+def track_height_command_reward(
+    env: ManagerBasedRLEnv, 
+    std: float, 
+    command_name: str, 
+    scanner_cfg: SceneEntityCfg
+) -> torch.Tensor:
+    """Reward the robot for tracking the height command using scanner position.
+    
+    This function rewards the robot for maintaining the commanded absolute height
+    above terrain. Uses the height scanner position as the current robot height.
+    
+    Args:
+        env: The environment instance
+        std: Standard deviation for the exponential reward kernel
+        command_name: Name of the height command
+        scanner_cfg: Configuration for the height scanner
+        
+    Returns:
+        Reward tensor based on height tracking error. Shape is (num_envs,).
+    """
+    # Extract height scanner
+    height_scanner = env.scene.sensors[scanner_cfg.name]
+    
+    current_height = height_scanner.data.pos_w[:, 2]  # (num_envs,)
+    
+    height_command = env.command_manager.get_command(command_name)  # (num_envs, 1)
+    
+    terrain_height = torch.mean(height_scanner.data.ray_hits_w[..., 2], dim=-1)
+    target_height = terrain_height + height_command[:, 0]  # (num_envs,)
+    
+    height_error = torch.square(current_height - target_height)  # (num_envs,)
+    
+    reward = torch.exp(-height_error / (std**2))
+    
+    return reward
+
+
+def track_body_orientation_axis_reward(
+    env: ManagerBasedRLEnv, 
+    std: float, 
+    command_name: str, 
+    asset_cfg: SceneEntityCfg,
+    axis: str
+) -> torch.Tensor:
+    """Reward the robot for tracking a specific axis of body orientation command.
+    
+    This function rewards the robot for maintaining the commanded body orientation
+    for a specific axis (roll, pitch, or yaw) allowing fine-grained control over
+    orientation tracking rewards.
+    
+    Args:
+        env: The environment instance
+        std: Standard deviation for the exponential reward kernel
+        command_name: Name of the orientation command
+        asset_cfg: Asset configuration specifying which body to track
+        axis: Which axis to track - "x", "y", or "z"
+        
+    Returns:
+        Reward tensor based on single-axis orientation tracking error. Shape is (num_envs,).
+    """
+    # Map axis names to indices
+    axis_map = {"x": 0, "y": 1, "z": 2}
+    if axis not in axis_map:
+        raise ValueError(f"Invalid axis '{axis}'. Must be one of: {list(axis_map.keys())}")
+    
+    axis_idx = axis_map[axis]
+    
+    # Extract the robot asset
+    asset = env.scene[asset_cfg.name]
+    
+    # Get current body orientation (quaternion) and convert to Euler
+    current_quat = asset.data.body_quat_w[:, asset_cfg.body_ids]  # (num_envs, num_bodies, 4)
+    current_euler = quat_to_euler_xyz(current_quat)  # (num_envs, num_bodies, 3)
+    
+    # Get the orientation command (Euler angles)
+    target_euler_command = env.command_manager.get_command(command_name)  # (num_envs, 3)
+    
+    # Extract current and target angles for the specified axis
+    current_angle = current_euler[:, :, axis_idx]  # (num_envs, num_bodies)
+    target_angle = target_euler_command[:, axis_idx]  # (num_envs,)
+    
+    # Expand target to match body dimensions
+    target_angle = target_angle.unsqueeze(1).expand(-1, current_angle.shape[1])  # (num_envs, num_bodies)
+    
+    # Calculate angular difference (handling wrap-around)
+    angle_diff = torch.abs(current_angle - target_angle)  # (num_envs, num_bodies)
+    angle_diff = torch.min(angle_diff, 2 * math.pi - angle_diff)  # Handle 2π wrap-around
+    
+    # Sum across all bodies for this axis
+    total_axis_error = torch.sum(angle_diff, dim=1)  # (num_envs,)
+    
+    # Apply exponential reward kernel
+    reward = torch.exp(-total_axis_error / (std**2))
+    
+    return reward
 
 def randomize_imu_mount(
     env: ManagerBasedEnv,
@@ -435,6 +766,39 @@ class KBotRewards(RewardsCfg):
         },
     )
 
+    # Pose tracking rewards
+    track_height_command = RewTerm(
+        func=track_height_command_reward,
+        weight=1.5,
+        params={
+            "std": 0.2,
+            "command_name": "base_height",
+            "scanner_cfg": SceneEntityCfg("height_scanner"),
+        },
+    )
+
+    track_body_orientation_x = RewTerm(
+        func=track_body_orientation_axis_reward,
+        weight=1.2,
+        params={
+            "std": 0.5,
+            "command_name": "base_orientation", 
+            "axis": "x",
+            "asset_cfg": SceneEntityCfg("robot", body_names=["Torso_Side_Right"]),
+        },
+    )
+
+    track_body_orientation_y = RewTerm(
+        func=track_body_orientation_axis_reward,
+        weight=1.2,
+        params={
+            "std": 0.5,
+            "command_name": "base_orientation", 
+            "axis": "y",
+            "asset_cfg": SceneEntityCfg("robot", body_names=["Torso_Side_Right"]),
+        },
+    )
+
     # Action smoothness penalty
     action_acceleration_l2 = RewTerm(
         func=action_acceleration_l2,
@@ -508,6 +872,12 @@ class KBotObservations:
         )
         velocity_commands = ObsTerm(
             func=mdp.generated_commands, params={"command_name": "base_velocity"}
+        )
+        height_commands = ObsTerm(
+            func=mdp.generated_commands, params={"command_name": "base_height"}
+        )
+        orientation_commands = ObsTerm(
+            func=mdp.generated_commands, params={"command_name": "base_orientation"}
         )
         # Replaced with privileged observations without noise below
         # joint_pos = ObsTerm(
@@ -607,6 +977,12 @@ class KBotObservations:
         velocity_commands = ObsTerm(
             func=mdp.generated_commands, params={"command_name": "base_velocity"}
         )
+        height_commands = ObsTerm(
+            func=mdp.generated_commands, params={"command_name": "base_height"}
+        )
+        orientation_commands = ObsTerm(
+            func=mdp.generated_commands, params={"command_name": "base_orientation"}
+        )
         joint_pos = ObsTerm(
             func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.05, n_max=0.05)
         )
@@ -666,6 +1042,8 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Scene
         self.scene.robot = KBOT_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"
+        self.scene.height_scanner.pattern_cfg.resolution = 0.08
+        self.scene.height_scanner.pattern_cfg.size = [1.0, 1.0]
 
         # Terrains
         # Override terrain generator with custom KBot configuration
@@ -860,6 +1238,32 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.resampling_time_range = (0.5, 10.0)
         self.commands.base_velocity.rel_standing_envs = 0.2
 
+        # Height and orientation commands
+        pose_angles = math.radians(45)
+        
+        self.commands.base_height = UniformHeightCommandCfg(
+            class_type=UniformHeightCommand,
+            asset_name="robot",
+            resampling_time_range=(4.0, 15.0),
+            scanner_cfg=SceneEntityCfg("height_scanner"),
+            ranges=UniformHeightCommandCfg.Ranges(
+                height=(0.75, 1.05)  # 0.75m to 1.05m above terrain
+            )
+        )
+        
+        self.commands.base_orientation = UniformOrientationCommandCfg(
+            class_type=UniformOrientationCommand,
+            asset_name="robot", 
+            body_name="Torso_Side_Right",
+            resampling_time_range=(4.0, 15.0),
+            zero_command_prob=0.4,
+            ranges=UniformOrientationCommandCfg.Ranges(
+                roll=(-pose_angles, pose_angles),
+                pitch=(-pose_angles, pose_angles),
+                yaw=(-pose_angles, pose_angles)
+            )
+        )
+
         # Terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = [
             "base",
@@ -946,7 +1350,7 @@ class KBotRoughEnvCfg_PLAY(KBotRoughEnvCfg):
         super().__post_init__()
 
         # make a smaller scene for play
-        self.scene.num_envs = 50
+        self.scene.num_envs = 4
         self.scene.env_spacing = 2.5
         self.episode_length_s = 40.0
         # spawn the robot randomly in the grid (instead of their terrain levels)
@@ -961,6 +1365,9 @@ class KBotRoughEnvCfg_PLAY(KBotRoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_y = (-1.5, 1.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+
+        self.commands.base_height.ranges.height = (1.05, 1.05)
+        self.commands.base_orientation.zero_command_prob = 1.0
         # disable randomization for play
         self.observations.policy.enable_corruption = False
         # remove random pushing for play
@@ -969,3 +1376,6 @@ class KBotRoughEnvCfg_PLAY(KBotRoughEnvCfg):
 
         # Disable push curriculum for play mode
         self.curriculum.velocity_push_curriculum = None
+        
+        # Disable all domain randomization to save memory
+        self.enable_randomization = False
