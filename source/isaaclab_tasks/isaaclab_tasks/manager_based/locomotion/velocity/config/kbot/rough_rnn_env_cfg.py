@@ -125,6 +125,50 @@ def foot_height_reward(
     
     return reward
 
+def clamped_base_height_l2(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    sensor_cfg: SceneEntityCfg | None = None,
+    min_ray_distance: float = -1.0,
+    max_ray_distance: float = 10.0,
+) -> torch.Tensor:
+    """Penalize asset height from its target using L2 squared kernel.
+
+    Note:
+        For flat terrain, target height is in the world frame. For rough terrain,
+        sensor readings can adjust the target height to account for the terrain.
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    if sensor_cfg is not None:
+        sensor: RayCaster = env.scene[sensor_cfg.name]
+        # Adjust the target height using the sensor data
+        
+        ray_distances = torch.nan_to_num(
+            sensor.data.ray_hits_w[..., 2],
+            nan=0.0, posinf=1.5, neginf=0.0
+        )
+        ray_distances = torch.clamp(ray_distances, min_ray_distance, max_ray_distance)
+        adjusted_target_height = target_height + torch.mean(ray_distances, dim=1)
+    else:
+        adjusted_target_height = target_height
+
+    # Compute the L2 squared penalty
+    penalty = torch.square(asset.data.root_pos_w[:, 2] - adjusted_target_height)
+    
+    # breakpoint()
+    
+    if not torch.isfinite(penalty).all():
+        print("NaN/Inf in base-height reward")
+        breakpoint()
+    if penalty.abs().max() > 1e3:
+        print("base-height reward exploded")
+        breakpoint()
+    
+    return penalty
+
 
 def randomize_imu_mount(
     env: ManagerBasedEnv,
@@ -300,12 +344,14 @@ class KBotRewards(RewardsCfg):
     )
 
     track_height = RewTerm(
-        func=mdp.base_height_l2,
+        func=clamped_base_height_l2,
         weight=-1.0,
         params={
             "target_height": 1.05,
             "asset_cfg": SceneEntityCfg("robot"),
             "sensor_cfg": SceneEntityCfg("height_scanner"),
+            "min_ray_distance": -1.0,
+            "max_ray_distance": 10.0,
         },
     )
 
@@ -677,7 +723,7 @@ class KBotCurriculumCfg:
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-    enable_randomization: bool = True
+    enable_randomization: bool = False
     rewards: KBotRewards = KBotRewards()
     terminations: KBotTerminationsCfg = KBotTerminationsCfg()
     observations: KBotObservations = KBotObservations()
