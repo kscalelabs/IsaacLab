@@ -125,7 +125,7 @@ def foot_height_reward(
     
     return reward
 
-def clamped_base_height_l2(
+def clamped_base_height_l1(
     env: ManagerBasedRLEnv,
     target_height: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -156,7 +156,8 @@ def clamped_base_height_l2(
         adjusted_target_height = target_height
 
     # Compute the L2 squared penalty
-    penalty = torch.square(asset.data.root_pos_w[:, 2] - adjusted_target_height)
+    # penalty = torch.square(asset.data.root_pos_w[:, 2] - adjusted_target_height)
+    penalty = torch.abs(asset.data.root_pos_w[:, 2] - adjusted_target_height)
     
     # breakpoint()
     
@@ -228,6 +229,14 @@ def randomize_imu_mount(
         "imu_offset_cm": mean_offset_cm,
         "imu_tilt_deg": mean_tilt_deg,
     }
+    
+def flat_orientation_l1(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # |gx| + |gy|
+    return torch.sum(torch.abs(asset.data.projected_gravity_b[:, :2]), dim=1)
 
 
 # Adds flat terrain to the terrain generator
@@ -344,7 +353,7 @@ class KBotRewards(RewardsCfg):
     )
 
     track_height = RewTerm(
-        func=clamped_base_height_l2,
+        func=clamped_base_height_l1,
         weight=-10.0,
         params={
             "target_height": 1.02,
@@ -489,6 +498,11 @@ class KBotRewards(RewardsCfg):
     action_acceleration_l2 = RewTerm(
         func=action_acceleration_l2,
         weight=-0.1,
+    )
+    
+    flat_orientation_l1 = RewTerm(
+        func=flat_orientation_l1,
+        weight=-10.0,
     )
 
     # Foot contact force penalty - L2 penalty above threshold
@@ -890,7 +904,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
         self.rewards.undesired_contacts = None
-        self.rewards.flat_orientation_l2.weight = -10.0
+        self.rewards.flat_orientation_l2 = None
         self.rewards.action_rate_l2.weight = -0.05
         self.rewards.dof_acc_l2.weight = -1.25e-7
         self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg(
