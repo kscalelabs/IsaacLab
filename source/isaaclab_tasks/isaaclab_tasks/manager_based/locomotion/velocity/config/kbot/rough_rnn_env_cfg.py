@@ -125,6 +125,51 @@ def foot_height_reward(
     
     return reward
 
+def clamped_base_height_l1(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    sensor_cfg: SceneEntityCfg | None = None,
+    min_ray_distance: float = -1.0,
+    max_ray_distance: float = 10.0,
+) -> torch.Tensor:
+    """Penalize asset height from its target using L2 squared kernel.
+
+    Note:
+        For flat terrain, target height is in the world frame. For rough terrain,
+        sensor readings can adjust the target height to account for the terrain.
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    if sensor_cfg is not None:
+        sensor: RayCaster = env.scene[sensor_cfg.name]
+        # Adjust the target height using the sensor data
+        
+        ray_distances = torch.nan_to_num(
+            sensor.data.ray_hits_w[..., 2],
+            nan=0.0, posinf=1.5, neginf=0.0
+        )
+        ray_distances = torch.clamp(ray_distances, min_ray_distance, max_ray_distance)
+        adjusted_target_height = target_height + torch.mean(ray_distances, dim=1)
+    else:
+        adjusted_target_height = target_height
+
+    # Compute the L2 squared penalty
+    # penalty = torch.square(asset.data.root_pos_w[:, 2] - adjusted_target_height)
+    penalty = torch.abs(asset.data.root_pos_w[:, 2] - adjusted_target_height)
+    
+    # breakpoint()
+    
+    if not torch.isfinite(penalty).all():
+        print("NaN/Inf in base-height reward")
+        breakpoint()
+    if penalty.abs().max() > 1e3:
+        print("base-height reward exploded")
+        breakpoint()
+    
+    return penalty
+
 
 def randomize_imu_mount(
     env: ManagerBasedEnv,
@@ -184,6 +229,14 @@ def randomize_imu_mount(
         "imu_offset_cm": mean_offset_cm,
         "imu_tilt_deg": mean_tilt_deg,
     }
+    
+def flat_orientation_l1(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # |gx| + |gy|
+    return torch.sum(torch.abs(asset.data.projected_gravity_b[:, :2]), dim=1)
 
 
 # Adds flat terrain to the terrain generator
@@ -282,6 +335,26 @@ def velocity_push_curriculum(
     }
 
 
+def command_pos_limits(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """
+    Penalise *commanded* target angles that exceed the hard/soft limits.
+
+    Works with any PD/implicit/explicit actuator as long as the action is
+    interpreted as a desired joint position (the default in Isaac Lab).
+    """
+    asset = env.scene[asset_cfg.name]
+    processed_actions = asset.data.joint_pos_target[:, asset_cfg.joint_ids]
+    
+    low_limits = asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 0]
+    high_limits = asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 1]
+    
+    below = (low_limits - processed_actions).clamp(min=0.0)
+    above = (processed_actions - high_limits).clamp(min=0.0)
+    return torch.sum(below + above, dim=1)
+
 @configclass
 class KBotRewards(RewardsCfg):
     """Reward terms for the K-Bot velocity task."""
@@ -297,6 +370,18 @@ class KBotRewards(RewardsCfg):
         func=mdp.track_ang_vel_z_world_exp,
         weight=1.0,
         params={"command_name": "base_velocity", "std": 0.5},
+    )
+
+    track_height = RewTerm(
+        func=clamped_base_height_l1,
+        weight=-10.0,
+        params={
+            "target_height": 1.02,
+            "asset_cfg": SceneEntityCfg("robot"),
+            "sensor_cfg": SceneEntityCfg("height_scanner"),
+            "min_ray_distance": -1.0,
+            "max_ray_distance": 10.0,
+        },
     )
 
     feet_air_time = RewTerm(
@@ -325,18 +410,18 @@ class KBotRewards(RewardsCfg):
         },
     )
 
-    foot_height = RewTerm(
-        func=foot_height_reward,
-        weight=0.5,
-        params={
-            "target_height": 0.2,  # 15cm target height for swing phase
-            "std": 0.05,           # Standard deviation for exponential kernel
-            "tanh_mult": 2.0,      # Velocity multiplier for swing detection
-            "asset_cfg": SceneEntityCfg(
-                "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
-            ),
-        },
-    )
+    # foot_height = RewTerm(
+    #     func=foot_height_reward,
+    #     weight=0.5,
+    #     params={
+    #         "target_height": 0.2,  # 15cm target height for swing phase
+    #         "std": 0.05,           # Standard deviation for exponential kernel
+    #         "tanh_mult": 2.0,      # Velocity multiplier for swing detection
+    #         "asset_cfg": SceneEntityCfg(
+    #             "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+    #         ),
+    #     },
+    # )
 
     # Joint-limit & deviation penalties
     dof_pos_limits = RewTerm(
@@ -346,6 +431,16 @@ class KBotRewards(RewardsCfg):
             "asset_cfg": SceneEntityCfg(
                 "robot", joint_names=["dof_left_ankle_02", "dof_right_ankle_02"]
             )
+        },
+    )
+
+
+    
+    command_pos_limits = RewTerm(
+        func=command_pos_limits,
+        weight=-2.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
         },
     )
 
@@ -367,7 +462,7 @@ class KBotRewards(RewardsCfg):
 
     joint_deviation_hip_pitch_knee = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.01,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -383,7 +478,7 @@ class KBotRewards(RewardsCfg):
 
     joint_deviation_ankles = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.5,
+        weight=-0.01,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot", joint_names=["dof_left_ankle_02", "dof_right_ankle_02"]
@@ -434,6 +529,11 @@ class KBotRewards(RewardsCfg):
         func=action_acceleration_l2,
         weight=-0.1,
     )
+    
+    flat_orientation_l1 = RewTerm(
+        func=flat_orientation_l1,
+        weight=-10.0,
+    )
 
     # Foot contact force penalty - L2 penalty above threshold
     # foot_contact_force_l2 = RewTerm(
@@ -452,7 +552,7 @@ class KBotRewards(RewardsCfg):
     # Foot-impact regulariser (discourages stomping)
     foot_impact_penalty = RewTerm(
         func=mdp.contact_forces,
-        weight=-1.5e-3,
+        weight=-1.5e-4,
         params={
             "threshold": 358.0,  # Manually checked static load of the kbot while standing
             "sensor_cfg": SceneEntityCfg(
@@ -482,6 +582,36 @@ class KBotRewards(RewardsCfg):
                 ],
             ),
         },
+    )
+    
+    feet_separation_penalty = RewTerm(
+        func=mdp.body_distance_penalty,        # already defined helper
+        weight=-2.0,                       # start here; tune as needed
+        params={
+            "min_distance": 0.25,          # 25 cm safety margin,
+            "asset_cfg": SceneEntityCfg("robot"),
+            "body_a_names": ["KB_D_501L_L_LEG_FOOT"],   # left  foot body name
+            "body_b_names": ["KB_D_501R_R_LEG_FOOT"],   # right foot body name
+        },
+    )
+
+
+@configclass
+class KBotTerminationsCfg:
+    """Termination terms for the MDP."""
+
+    time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    base_contact = DoneTerm(
+        func=mdp.illegal_contact,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"),
+            "threshold": 1.0,
+        },
+    )
+    terrain_out_of_bounds = DoneTerm(
+        func=mdp.terrain_out_of_bounds,
+        params={"asset_cfg": SceneEntityCfg("robot"), "distance_buffer": 3.0},
+        time_out=True,
     )
 
 
@@ -648,8 +778,9 @@ class KBotCurriculumCfg:
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-    enable_randomization: bool = True
+    enable_randomization: bool = False
     rewards: KBotRewards = KBotRewards()
+    terminations: KBotTerminationsCfg = KBotTerminationsCfg()
     observations: KBotObservations = KBotObservations()
     curriculum: KBotCurriculumCfg = KBotCurriculumCfg()
 
@@ -807,12 +938,14 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # I think this is because the "base" is not a rigid body in the robot asset
         self.events.add_base_mass = None
-        self.events.base_com.params["asset_cfg"] = SceneEntityCfg("robot", body_names="Torso_Side_Right")
+        self.events.base_com.params["asset_cfg"] = SceneEntityCfg(
+            "robot", body_names="Torso_Side_Right"
+        )
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
         self.rewards.undesired_contacts = None
-        self.rewards.flat_orientation_l2.weight = -1.0
+        self.rewards.flat_orientation_l2 = None
         self.rewards.action_rate_l2.weight = -0.05
         self.rewards.dof_acc_l2.weight = -1.25e-7
         self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg(
@@ -885,7 +1018,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         Use with command line arg: env.enable_randomization=false
         """
-        
+
         print("[INFO]: Disabling all domain randomization!\n" * 5, end="")
 
         # Disable events
