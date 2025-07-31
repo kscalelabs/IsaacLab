@@ -347,7 +347,7 @@ class KBotRewards(RewardsCfg):
         func=clamped_base_height_l2,
         weight=-10.0,
         params={
-            "target_height": 1.05,
+            "target_height": 1.02,
             "asset_cfg": SceneEntityCfg("robot"),
             "sensor_cfg": SceneEntityCfg("height_scanner"),
             "min_ray_distance": -1.0,
@@ -357,7 +357,7 @@ class KBotRewards(RewardsCfg):
 
     feet_air_time = RewTerm(
         func=mdp.feet_air_time_positive_biped,
-        weight=2.25,
+        weight=2.5,
         params={
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg(
@@ -723,7 +723,7 @@ class KBotCurriculumCfg:
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-    enable_randomization: bool = True
+    enable_randomization: bool = False
     rewards: KBotRewards = KBotRewards()
     terminations: KBotTerminationsCfg = KBotTerminationsCfg()
     observations: KBotObservations = KBotObservations()
