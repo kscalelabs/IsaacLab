@@ -335,6 +335,26 @@ def velocity_push_curriculum(
     }
 
 
+def command_pos_limits(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """
+    Penalise *commanded* target angles that exceed the hard/soft limits.
+
+    Works with any PD/implicit/explicit actuator as long as the action is
+    interpreted as a desired joint position (the default in Isaac Lab).
+    """
+    asset = env.scene[asset_cfg.name]
+    processed_actions = asset.data.joint_pos_target[:, asset_cfg.joint_ids]
+    
+    low_limits = asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 0]
+    high_limits = asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 1]
+    
+    below = (low_limits - processed_actions).clamp(min=0.0)
+    above = (processed_actions - high_limits).clamp(min=0.0)
+    return torch.sum(below + above, dim=1)
+
 @configclass
 class KBotRewards(RewardsCfg):
     """Reward terms for the K-Bot velocity task."""
@@ -411,6 +431,16 @@ class KBotRewards(RewardsCfg):
             "asset_cfg": SceneEntityCfg(
                 "robot", joint_names=["dof_left_ankle_02", "dof_right_ankle_02"]
             )
+        },
+    )
+
+
+    
+    command_pos_limits = RewTerm(
+        func=command_pos_limits,
+        weight=-2.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
         },
     )
 
