@@ -345,7 +345,7 @@ class KBotRewards(RewardsCfg):
 
     track_height = RewTerm(
         func=clamped_base_height_l2,
-        weight=-1.0,
+        weight=-10.0,
         params={
             "target_height": 1.05,
             "asset_cfg": SceneEntityCfg("robot"),
@@ -357,7 +357,7 @@ class KBotRewards(RewardsCfg):
 
     feet_air_time = RewTerm(
         func=mdp.feet_air_time_positive_biped,
-        weight=0.25,
+        weight=2.25,
         params={
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg(
@@ -508,7 +508,7 @@ class KBotRewards(RewardsCfg):
     # Foot-impact regulariser (discourages stomping)
     foot_impact_penalty = RewTerm(
         func=mdp.contact_forces,
-        weight=-1.5e-3,
+        weight=-1.5e-4,
         params={
             "threshold": 358.0,  # Manually checked static load of the kbot while standing
             "sensor_cfg": SceneEntityCfg(
@@ -723,7 +723,7 @@ class KBotCurriculumCfg:
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-    enable_randomization: bool = False
+    enable_randomization: bool = True
     rewards: KBotRewards = KBotRewards()
     terminations: KBotTerminationsCfg = KBotTerminationsCfg()
     observations: KBotObservations = KBotObservations()
@@ -890,7 +890,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
         self.rewards.undesired_contacts = None
-        self.rewards.flat_orientation_l2.weight = -1.0
+        self.rewards.flat_orientation_l2.weight = -10.0
         self.rewards.action_rate_l2.weight = -0.05
         self.rewards.dof_acc_l2.weight = -1.25e-7
         self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg(
