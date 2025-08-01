@@ -1,6 +1,7 @@
 """Rough terrain locomotion environment config for kbot."""
 
 from typing import Dict, Optional, Tuple
+import math
 
 import torch
 
@@ -124,6 +125,52 @@ def foot_height_reward(
     reward = torch.exp(-total_error / std)
     
     return reward
+
+def foot_flat_orientation_l1(
+    env: ManagerBasedRLEnv, 
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    roll_offset: float = 0.0,
+    pitch_offset: float = 0.0,
+    yaw_offset: float = 0.0,
+) -> torch.Tensor:
+
+    asset = env.scene[asset_cfg.name]
+    
+    # Get foot quat
+    foot_quat_w = asset.data.body_quat_w[:, asset_cfg.body_ids]  # Shape: (num_envs, num_feet, 4)
+    
+    def correct_foot_quat(foot_quat_w: torch.Tensor, roll_offset: float, pitch_offset: float, yaw_offset: float) -> torch.Tensor:
+        offset_quat = quat_from_euler_xyz(
+            torch.full_like(foot_quat_w[:, :, 0], roll_offset),
+            torch.full_like(foot_quat_w[:, :, 0], pitch_offset), 
+            torch.full_like(foot_quat_w[:, :, 0], yaw_offset)
+        )  # Shape: (num_envs, num_feet, 4)
+        return math_utils.quat_mul(foot_quat_w, offset_quat)
+    
+    
+    # By default the foot frame is wrong, so we need to rotate it by the given offset
+    # TODO: Root cause and correct in Onshape 
+    if roll_offset != 0.0 or pitch_offset != 0.0 or yaw_offset != 0.0:
+        foot_quat_w = correct_foot_quat(foot_quat_w, roll_offset, pitch_offset, yaw_offset)
+    
+    # Get gravity vector in world frame
+    gravity_dir = asset.data.GRAVITY_VEC_W.unsqueeze(1)  # Shape: (num_envs, 1, 3)
+    
+    # Expand gravity vector to match number of feet
+    num_feet = len(asset_cfg.body_ids)
+    gravity_dir = gravity_dir.expand(-1, num_feet, -1)  # Shape: (num_envs, num_feet, 3)
+    
+    # Project gravity onto each foot's local frame
+    projected_gravity = math_utils.quat_apply_inverse(foot_quat_w, gravity_dir)  # Shape: (num_envs, num_feet, 3)
+    
+    # Penalize only the xy-components (roll and pitch)
+    roll_pitch_error = projected_gravity[:, :, :2]  # Shape: (num_envs, num_feet, 2)
+    
+    # Compute L1 penalty for roll and pitch across all feet (sum across all feet)
+    penalty = torch.sum(torch.abs(roll_pitch_error), dim=-1)  # Shape: (num_envs, num_feet)
+    penalty = torch.sum(penalty, dim=-1)  # Sum across all feet, Shape: (num_envs,)
+    
+    return penalty
 
 def clamped_base_height_l1(
     env: ManagerBasedRLEnv,
@@ -535,6 +582,24 @@ class KBotRewards(RewardsCfg):
         weight=-10.0,
     )
 
+    # Foot orientation penalty - penalize non-flat foot orientations for roll and pitch (not yaw)
+    foot_flat_orientation = RewTerm(
+        func=foot_flat_orientation_l1,
+        weight=-2.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", body_names=[
+                    "KB_D_501L_L_LEG_FOOT", 
+                    "KB_D_501R_R_LEG_FOOT"
+                    ]
+            ),
+            # Manually checked that roll offset is needed
+            "roll_offset": math.radians(90),
+            "pitch_offset": math.radians(0),
+            "yaw_offset": math.radians(0),
+        },
+    )
+
     # Foot contact force penalty - L2 penalty above threshold
     # foot_contact_force_l2 = RewTerm(
     #     func=contact_forces_l2_penalty,
@@ -778,7 +843,7 @@ class KBotCurriculumCfg:
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-    enable_randomization: bool = False
+    enable_randomization: bool = True
     rewards: KBotRewards = KBotRewards()
     terminations: KBotTerminationsCfg = KBotTerminationsCfg()
     observations: KBotObservations = KBotObservations()
