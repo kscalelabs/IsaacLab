@@ -281,8 +281,8 @@ def flat_orientation_l1(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
+    """L1 penalty on roll/pitch: sum(|gravity_body_frame.xy|). Zero when upright."""
     asset: RigidObject = env.scene[asset_cfg.name]
-    # |gx| + |gy|
     return torch.sum(torch.abs(asset.data.projected_gravity_b[:, :2]), dim=1)
 
 
@@ -387,10 +387,10 @@ def command_pos_limits(
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """
-    Penalise *commanded* target angles that exceed the hard/soft limits.
+    Penalise commanded targets from the policy that exceed the limits.
 
     Works with any PD/implicit/explicit actuator as long as the action is
-    interpreted as a desired joint position (the default in Isaac Lab).
+    interpreted as a desired joint position.
     """
     asset = env.scene[asset_cfg.name]
     processed_actions = asset.data.joint_pos_target[:, asset_cfg.joint_ids]
@@ -582,7 +582,6 @@ class KBotRewards(RewardsCfg):
         weight=-10.0,
     )
 
-    # Foot orientation penalty - penalize non-flat foot orientations for roll and pitch (not yaw)
     foot_flat_orientation = RewTerm(
         func=foot_flat_orientation_l1,
         weight=-0.5,
