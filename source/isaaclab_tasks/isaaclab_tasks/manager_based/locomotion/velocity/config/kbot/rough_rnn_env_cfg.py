@@ -424,7 +424,7 @@ class KBotRewards(RewardsCfg):
         func=clamped_base_height_l1,
         weight=-10.0,
         params={
-            "target_height": 0.96,
+            "target_height": 0.96, # Manually checked this is the height of the robot when standing
             "asset_cfg": SceneEntityCfg("robot"),
             "sensor_cfg": SceneEntityCfg("height_scanner"),
             "min_ray_distance": -1.0,
