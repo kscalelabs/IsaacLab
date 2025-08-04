@@ -585,7 +585,7 @@ class KBotRewards(RewardsCfg):
     # Foot orientation penalty - penalize non-flat foot orientations for roll and pitch (not yaw)
     foot_flat_orientation = RewTerm(
         func=foot_flat_orientation_l1,
-        weight=-2.0,
+        weight=-0.5,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot", body_names=[
@@ -835,8 +835,8 @@ class KBotCurriculumCfg:
         params={
             "min_push": 0.01,
             "max_push": 0.5,
-            "curriculum_start_step": 24 * 500,
-            "curriculum_stop_step": 24 * 5500,
+            "curriculum_start_step": 24 * 5000,
+            "curriculum_stop_step": 24 * 10000,
         },
     )
 
