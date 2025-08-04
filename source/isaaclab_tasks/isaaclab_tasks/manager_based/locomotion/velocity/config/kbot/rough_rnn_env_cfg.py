@@ -133,7 +133,12 @@ def foot_flat_orientation_l1(
     pitch_offset: float = 0.0,
     yaw_offset: float = 0.0,
 ) -> torch.Tensor:
-    """L1 penalty for the feet on roll/pitch: sum(|gravity_body_frame.xy|). Zero when flat."""
+    """L1 penalty for the feet on roll/pitch: sum(|gravity_body_frame.xy|). Zero when flat.
+    
+    Note:
+        The foot frame is wrong, so we need to rotate it by the given offset
+        TODO: Root cause and correct in Onshape 
+    """
 
     asset = env.scene[asset_cfg.name]
     
