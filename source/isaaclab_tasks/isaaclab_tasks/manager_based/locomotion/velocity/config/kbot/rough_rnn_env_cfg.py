@@ -204,7 +204,8 @@ def clamped_base_height_l1(
 
     # Compute the L2 squared penalty
     # penalty = torch.square(asset.data.root_pos_w[:, 2] - adjusted_target_height)
-    penalty = torch.abs(asset.data.root_pos_w[:, 2] - adjusted_target_height)
+    robot_height = asset.data.root_pos_w[:, 2]
+    penalty = torch.abs(robot_height - adjusted_target_height)
     
     # breakpoint()
     
@@ -423,7 +424,7 @@ class KBotRewards(RewardsCfg):
         func=clamped_base_height_l1,
         weight=-10.0,
         params={
-            "target_height": 1.02,
+            "target_height": 0.96,
             "asset_cfg": SceneEntityCfg("robot"),
             "sensor_cfg": SceneEntityCfg("height_scanner"),
             "min_ray_distance": -1.0,
@@ -842,7 +843,7 @@ class KBotCurriculumCfg:
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-    enable_randomization: bool = True
+    enable_randomization: bool = False
     rewards: KBotRewards = KBotRewards()
     terminations: KBotTerminationsCfg = KBotTerminationsCfg()
     observations: KBotObservations = KBotObservations()
