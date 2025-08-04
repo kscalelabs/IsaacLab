@@ -133,6 +133,7 @@ def foot_flat_orientation_l1(
     pitch_offset: float = 0.0,
     yaw_offset: float = 0.0,
 ) -> torch.Tensor:
+    """L1 penalty for the feet on roll/pitch: sum(|gravity_body_frame.xy|). Zero when flat."""
 
     asset = env.scene[asset_cfg.name]
     
@@ -180,12 +181,7 @@ def clamped_base_height_l1(
     min_ray_distance: float = -1.0,
     max_ray_distance: float = 10.0,
 ) -> torch.Tensor:
-    """Penalize asset height from its target using L2 squared kernel.
-
-    Note:
-        For flat terrain, target height is in the world frame. For rough terrain,
-        sensor readings can adjust the target height to account for the terrain.
-    """
+    """Penalize asset height from its target using L1 kernel."""
     # extract the used quantities (to enable type-hinting)
     asset: RigidObject = env.scene[asset_cfg.name]
 
