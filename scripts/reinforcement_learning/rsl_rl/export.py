@@ -19,6 +19,7 @@ parser.add_argument(
     help=".pt file to export. If not provided, the latest checkpoint in the logs/rsl_rl/agent_name/ directory will be used.",
 )
 parser.add_argument("--num_envs", type=int, default=1)
+parser.add_argument("--save_date", action="store_true", default=False)
 
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
@@ -325,7 +326,9 @@ def main():
     checkpoint_path_obj = Path(checkpoint_path)
     run_timestamp = checkpoint_path_obj.parent.name
     model_name = checkpoint_path_obj.stem
-    kinfer_filename = f"{run_timestamp}_{model_name}.kinfer"
+    kinfer_filename = f"{model_name}.kinfer"
+    if args.save_date:
+        kinfer_filename = f"{run_timestamp}_{kinfer_filename}"
     output_path = checkpoint_path_obj.parent / kinfer_filename
     
     output_path.parent.mkdir(parents=True, exist_ok=True)
