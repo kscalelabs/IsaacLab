@@ -359,8 +359,13 @@ def body_distance_penalty(
         for j in range(len(body_b_ids)):
             # Calculate distance between body_a[i] and body_b[j]
             distance = torch.norm(body_a_pos[:, i] - body_b_pos[:, j], dim=1)
+            # dist_per_axis = body_a_pos[:, i] - body_b_pos[:, j]
+            # print(f"distance x: {dist_per_axis[:, 0]}")
+            # print(f"distance y: {dist_per_axis[:, 1]}")
+            # print(f"distance z: {dist_per_axis[:, 2]}")
             # Penalize when distance is below minimum
             violation = torch.clamp(min_distance - distance, min=0.0)
             penalty += violation
+
     
     return penalty

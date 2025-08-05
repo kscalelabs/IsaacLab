@@ -1,5 +1,6 @@
 """Rough terrain locomotion environment config for kbot."""
 
+import math
 from typing import Dict, Optional, Tuple
 
 import torch
@@ -31,6 +32,7 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     RewardsCfg,
 )
 from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.assets import RigidObject, Articulation
 
 
 def action_acceleration_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
@@ -58,6 +60,99 @@ def action_acceleration_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
     # Return L2 squared penalty
     return torch.sum(torch.square(action_acceleration), dim=1)
 
+def body_distance_penalty(
+    env: ManagerBasedRLEnv,
+    min_distance: float,
+    asset_cfg: SceneEntityCfg,
+    body_a_names: list[str],
+    body_b_names: list[str],
+) -> torch.Tensor:
+    """Penalize when specific bodies get too close to each other.
+    
+    This function is useful for preventing collisions between specific body parts, 
+    such as foot-to-foot collisions or arm-leg collisions.
+    
+    Args:
+        env: The environment instance.
+        min_distance: The minimum allowed distance between bodies.
+        asset_cfg: The asset configuration containing the bodies.
+        body_a_names: List of names for the first set of bodies.
+        body_b_names: List of names for the second set of bodies.
+        
+    Returns:
+        A penalty tensor based on proximity violations. Shape is (num_envs,).
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: Articulation = env.scene[asset_cfg.name]
+    
+    # Get body indices for the specified body names
+    body_a_ids, _ = asset.find_bodies(body_a_names)
+    body_b_ids, _ = asset.find_bodies(body_b_names)
+    
+    # Get body positions in world frame
+    body_a_pos = asset.data.body_pos_w[:, body_a_ids]  # (num_envs, num_bodies_a, 3)
+    body_b_pos = asset.data.body_pos_w[:, body_b_ids]  # (num_envs, num_bodies_b, 3)
+    
+    # Compute pairwise distances between all body_a and body_b pairs
+    penalty = torch.zeros(env.num_envs, device=env.device)
+    
+    for i in range(len(body_a_ids)):
+        for j in range(len(body_b_ids)):
+            # Calculate distance between body_a[i] and body_b[j]
+            distance = torch.norm(body_a_pos[:, i] - body_b_pos[:, j], dim=1)
+            # Penalize when distance is below minimum
+            violation = torch.clamp(min_distance - distance, min=0.0)
+            penalty += violation
+    
+    return penalty
+
+_AXIS_TO_IDX = {"x": 0, "y": 1, "z": 2}
+
+
+def body_distance_axis_penalty(
+    env: ManagerBasedRLEnv,
+    min_distance: float,
+    asset_cfg: SceneEntityCfg,
+    body_a_names: list[str],
+    body_b_names: list[str],
+    axis: str = "y",
+) -> torch.Tensor:
+    """Penalize bodies that get too close *per Cartesian axis*.
+
+    Instead of the Euclidean distance, this penalty is applied separately on
+    each axis.  For a body pair, if the absolute separation along the *x*, *y*,
+    or *z* axis falls below ``min_distance``, the violation amount
+    ``(min_distance - |delta|)`` is accumulated.  This is useful when you want
+    to discourage overlapping in individual directions (e.g. legs crossing in
+    the *y* direction) without being overly restrictive on diagonal motion.
+    """
+
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    # Resolve body indices once
+    body_a_ids, _ = asset.find_bodies(body_a_names)
+    body_b_ids, _ = asset.find_bodies(body_b_names)
+
+    # Positions
+    pos_a = asset.data.body_pos_w[:, body_a_ids]  # (N, A, 3)
+    pos_b = asset.data.body_pos_w[:, body_b_ids]  # (N, B, 3)
+
+    penalty = torch.zeros(env.num_envs, device=env.device)
+
+    # Validate axis
+    if axis not in _AXIS_TO_IDX:
+        raise ValueError(f"axis must be one of {_AXIS_TO_IDX.keys()}, got '{axis}'")
+
+    idx = _AXIS_TO_IDX[axis]
+
+    for i in range(len(body_a_ids)):
+        for j in range(len(body_b_ids)):
+            delta = torch.abs(pos_a[:, i, idx] - pos_b[:, j, idx])  # (N,)
+            violation = torch.clamp(min_distance - delta, min=0.0)  # (N,)
+            penalty += violation
+
+    return penalty
+
 
 def contact_forces_l2_penalty(env: ManagerBasedRLEnv, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize contact forces using L2 squared penalty above threshold.
@@ -76,8 +171,44 @@ def contact_forces_l2_penalty(env: ManagerBasedRLEnv, threshold: float, sensor_c
     l2_penalty = torch.sum(torch.square(violations), dim=1) 
     return l2_penalty
 
+def flat_orientation_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize non-flat base orientation using L2 squared kernel.
+
+    This is computed by penalizing the xy-components of the projected gravity vector.
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # L1 penalty: sum of absolute xy-components of projected gravity.
+    return torch.sum(torch.abs(asset.data.projected_gravity_b[:, :2]), dim=1)
+
 
 def foot_height_reward(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+    height_cap: float,
+) -> torch.Tensor:
+    """Reward feet for being lifted, saturating at ``height_cap``.
+
+    The reward grows linearly with the z-height of each specified foot up to
+    ``height_cap`` meters, after which it is capped.
+    """
+
+    asset = env.scene[asset_cfg.name]
+
+    # Height of each foot in world frame (z-axis)
+    foot_heights = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+
+    clipped = torch.clamp(foot_heights, max=height_cap)
+
+    reward = torch.sum(clipped / height_cap, dim=1)
+
+    # no reward for zero command
+    reward *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
+
+    return reward
+
+def foot_height_swing_reward(
     env: ManagerBasedRLEnv, 
     asset_cfg: SceneEntityCfg, 
     target_height: float, 
@@ -125,6 +256,89 @@ def foot_height_reward(
     
     return reward
 
+
+def standing_lin_vel_l1(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    threshold: float = 0.1,
+) -> torch.Tensor:
+    """Penalize base linear velocity when the command is (almost) zero.
+
+    This term encourages the robot to remain stable during *standing* episodes
+    (i.e. when the commanded linear velocity magnitude is below ``threshold``).
+
+    The returned value is the L1 norm of the xy-components of the base linear
+    velocity expressed in the robot frame, gated so that it contributes **only**
+    for standing commands.
+    """
+
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    # commanded linear velocity (body frame)
+    cmd_lin_vel_xy = env.command_manager.get_command(command_name)[:, :2]
+    cmd_speed = torch.norm(cmd_lin_vel_xy, dim=1)
+
+    # determine which envs are in standing mode
+    is_standing = cmd_speed < threshold
+
+    # L1 error (command is ~0) – use absolute actual velocity
+    lin_vel_error = torch.sum(torch.abs(asset.data.root_lin_vel_b[:, :2]), dim=1)
+
+    # only penalize standing envs
+    return lin_vel_error * is_standing.float()
+
+def foot_flat_orientation_l1(
+    env: ManagerBasedRLEnv, 
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    roll_offset: float = 0.0,
+    pitch_offset: float = 0.0,
+    yaw_offset: float = 0.0,
+) -> torch.Tensor:
+    """L1 penalty for the feet on roll/pitch: sum(|gravity_body_frame.xy|). Zero when flat.
+    
+    Note:
+        The foot frame is wrong, so we need to rotate it by the given offset
+        TODO: Root cause and correct in Onshape 
+    """
+
+    asset = env.scene[asset_cfg.name]
+
+    # Get foot quat
+    foot_quat_w = asset.data.body_quat_w[:, asset_cfg.body_ids]  # Shape: (num_envs, num_feet, 4)
+
+    def correct_foot_quat(foot_quat_w: torch.Tensor, roll_offset: float, pitch_offset: float, yaw_offset: float) -> torch.Tensor:
+        offset_quat = quat_from_euler_xyz(
+            torch.full_like(foot_quat_w[:, :, 0], roll_offset),
+            torch.full_like(foot_quat_w[:, :, 0], pitch_offset), 
+            torch.full_like(foot_quat_w[:, :, 0], yaw_offset)
+        )  # Shape: (num_envs, num_feet, 4)
+        return math_utils.quat_mul(foot_quat_w, offset_quat)
+
+
+    # By default the foot frame is wrong, so we need to rotate it by the given offset
+    # TODO: Root cause and correct in Onshape 
+    if roll_offset != 0.0 or pitch_offset != 0.0 or yaw_offset != 0.0:
+        foot_quat_w = correct_foot_quat(foot_quat_w, roll_offset, pitch_offset, yaw_offset)
+
+    # Get gravity vector in world frame
+    gravity_dir = asset.data.GRAVITY_VEC_W.unsqueeze(1)  # Shape: (num_envs, 1, 3)
+
+    # Expand gravity vector to match number of feet
+    num_feet = len(asset_cfg.body_ids)
+    gravity_dir = gravity_dir.expand(-1, num_feet, -1)  # Shape: (num_envs, num_feet, 3)
+
+    # Project gravity onto each foot's local frame
+    projected_gravity = math_utils.quat_apply_inverse(foot_quat_w, gravity_dir)  # Shape: (num_envs, num_feet, 3)
+
+    # Penalize only the xy-components (roll and pitch)
+    roll_pitch_error = projected_gravity[:, :, :2]  # Shape: (num_envs, num_feet, 2)
+
+    # Compute L1 penalty for roll and pitch across all feet (sum across all feet)
+    penalty = torch.sum(torch.abs(roll_pitch_error), dim=-1)  # Shape: (num_envs, num_feet)
+    penalty = torch.sum(penalty, dim=-1)  # Sum across all feet, Shape: (num_envs,)
+    return penalty
 
 def randomize_imu_mount(
     env: ManagerBasedEnv,
@@ -290,13 +504,23 @@ class KBotRewards(RewardsCfg):
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=2.0,
-        params={"command_name": "base_velocity", "std": 0.5},
+        weight=4.0,
+        params={"command_name": "base_velocity", "std": 0.2},
     )
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
-        weight=1.0,
+        weight=2.0,
         params={"command_name": "base_velocity", "std": 0.5},
+    )
+
+    # Standing stability penalty (active only for near-zero velocity commands)
+    standing_lin_vel_l1 = RewTerm(
+        func=standing_lin_vel_l1,
+        weight=-1.0,
+        params={
+            "command_name": "base_velocity",
+            "threshold": 0.1,
+        },
     )
 
     feet_air_time = RewTerm(
@@ -308,7 +532,7 @@ class KBotRewards(RewardsCfg):
                 "contact_forces",
                 body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
             ),
-            "threshold": 0.4,
+            "threshold": 0.8,
         },
     )
     feet_slide = RewTerm(
@@ -327,16 +551,28 @@ class KBotRewards(RewardsCfg):
 
     foot_height = RewTerm(
         func=foot_height_reward,
-        weight=0.5,
+        weight=0.3,
         params={
-            "target_height": 0.2,  # 15cm target height for swing phase
-            "std": 0.05,           # Standard deviation for exponential kernel
-            "tanh_mult": 2.0,      # Velocity multiplier for swing detection
+            "height_cap": 0.2,  # cap reward growth at 20 cm
             "asset_cfg": SceneEntityCfg(
                 "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
             ),
+            "command_name": "base_velocity",
         },
     )
+
+    # foot_height = RewTerm(
+    #     func=foot_height_swing_reward,
+    #     weight=0.5,
+    #     params={
+    #         "target_height": 0.2,  # 15cm target height for swing phase
+    #         "std": 0.05,           # Standard deviation for exponential kernel
+    #         "tanh_mult": 2.0,      # Velocity multiplier for swing detection
+    #         "asset_cfg": SceneEntityCfg(
+    #             "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+    #         ),
+    #     },
+    # )
 
     # Joint-limit & deviation penalties
     dof_pos_limits = RewTerm(
@@ -436,53 +672,90 @@ class KBotRewards(RewardsCfg):
     )
 
     # Foot contact force penalty - L2 penalty above threshold
-    # foot_contact_force_l2 = RewTerm(
-    #     func=contact_forces_l2_penalty,
-    #     weight=-1.0e-7,
-    #     params={
-    #         "threshold": 360.0,
-    #         "sensor_cfg": SceneEntityCfg(
-    #             "contact_forces",
-    #             body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
-    #         ),
-    #     },
-    # )
-
-    # No stomping reward
-    # Foot-impact regulariser (discourages stomping)
-    foot_impact_penalty = RewTerm(
-        func=mdp.contact_forces,
-        weight=-1.5e-3,
+    foot_contact_force_l2 = RewTerm(
+        func=contact_forces_l2_penalty,
+        weight=-1.0e-7,
         params={
-            "threshold": 358.0,  # Manually checked static load of the kbot while standing
+            "threshold": 360.0,
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=[
-                    "KB_D_501L_L_LEG_FOOT",
-                    "KB_D_501R_R_LEG_FOOT",
-                    "Torso_Side_Right",
-                    "KC_D_102L_L_Hip_Yoke_Drive",
-                    "RS03_5",
-                    "KC_D_301L_L_Femur_Lower_Drive",
-                    "KC_D_401L_L_Shin_Drive",
-                    "KC_C_104L_PitchHardstopDriven",
-                    "RS03_6",
-                    "KC_C_202L",
-                    "KC_C_401L_L_UpForearmDrive",
-                    "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
-                    "KC_D_102R_R_Hip_Yoke_Drive",
-                    "RS03_4",
-                    "KC_D_301R_R_Femur_Lower_Drive",
-                    "KC_D_401R_R_Shin_Drive",
-                    "KC_C_104R_PitchHardstopDriven",
-                    "RS03_3",
-                    "KC_C_202R",
-                    "KC_C_401R_R_UpForearmDrive",
-                    "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
-                ],
+                body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
             ),
         },
     )
+
+    flat_orientation_l1 = RewTerm(
+        func=flat_orientation_l1,
+        weight=-1.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
+    )
+
+    feet_distance_penalty = RewTerm(
+        func=body_distance_axis_penalty,
+        weight=-0.1,
+        params={
+            "min_distance": 0.25,
+            "asset_cfg": SceneEntityCfg("robot"),
+            "body_a_names": ["KB_D_501L_L_LEG_FOOT"],
+            "body_b_names": ["KB_D_501R_R_LEG_FOOT"],
+            "axis": "x",
+        },
+    )
+
+    foot_flat_orientation = RewTerm(
+        func=foot_flat_orientation_l1,
+        weight=-0.5,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", body_names=[
+                    "KB_D_501L_L_LEG_FOOT", 
+                    "KB_D_501R_R_LEG_FOOT"
+                    ]
+            ),
+            # Manually checked that roll offset is needed
+            "roll_offset": math.radians(90),
+            "pitch_offset": math.radians(0),
+            "yaw_offset": math.radians(0),
+        },
+    )
+
+    # No stomping reward
+    # Foot-impact regulariser (discourages stomping)
+    # foot_impact_penalty = RewTerm(
+    #     func=mdp.contact_forces,
+    #     weight=-1.5e-3,
+    #     params={
+    #         "threshold": 358.0,  # Manually checked static load of the kbot while standing
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "contact_forces",
+    #             body_names=[
+    #                 "KB_D_501L_L_LEG_FOOT",
+    #                 "KB_D_501R_R_LEG_FOOT",
+    #                 "Torso_Side_Right",
+    #                 "KC_D_102L_L_Hip_Yoke_Drive",
+    #                 "RS03_5",
+    #                 "KC_D_301L_L_Femur_Lower_Drive",
+    #                 "KC_D_401L_L_Shin_Drive",
+    #                 "KC_C_104L_PitchHardstopDriven",
+    #                 "RS03_6",
+    #                 "KC_C_202L",
+    #                 "KC_C_401L_L_UpForearmDrive",
+    #                 "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+    #                 "KC_D_102R_R_Hip_Yoke_Drive",
+    #                 "RS03_4",
+    #                 "KC_D_301R_R_Femur_Lower_Drive",
+    #                 "KC_D_401R_R_Shin_Drive",
+    #                 "KC_C_104R_PitchHardstopDriven",
+    #                 "RS03_3",
+    #                 "KC_C_202R",
+    #                 "KC_C_401R_R_UpForearmDrive",
+    #                 "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+    #             ],
+    #         ),
+    #     },
+    # )
 
 
 @configclass
@@ -810,9 +1083,10 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.base_com.params["asset_cfg"] = SceneEntityCfg("robot", body_names="Torso_Side_Right")
 
         # Rewards
-        self.rewards.lin_vel_z_l2.weight = 0.0
+        self.rewards.lin_vel_z_l2.weight = -1.0
         self.rewards.undesired_contacts = None
         self.rewards.flat_orientation_l2.weight = -1.0
+
         self.rewards.action_rate_l2.weight = -0.05
         self.rewards.dof_acc_l2.weight = -1.25e-7
         self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg(
@@ -847,11 +1121,19 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             ],
         )
 
+        self.rewards.ankle_torques_l2 = RewTerm(
+            func=mdp.joint_torques_l2,
+            weight=-1.5e-6,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=["dof_left_ankle_02", "dof_right_ankle_02"]),
+            },
+        )
+
         # Commands
         self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
-        self.commands.base_velocity.rel_standing_envs = 0.2
+        self.commands.base_velocity.rel_standing_envs = 0.3
 
         # Terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = [
