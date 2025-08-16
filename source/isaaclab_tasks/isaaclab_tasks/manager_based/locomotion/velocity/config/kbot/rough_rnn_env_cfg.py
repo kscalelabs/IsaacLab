@@ -1,6 +1,7 @@
 """Rough terrain locomotion environment config for kbot."""
 
 from typing import Dict, Optional, Tuple
+import math
 
 import torch
 
@@ -31,6 +32,9 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     RewardsCfg,
 )
 from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.assets import RigidObject, Articulation
+
+
 
 
 def action_acceleration_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
@@ -125,6 +129,46 @@ def foot_height_reward(
     
     return reward
 
+    
+def standing_lin_vel_l1(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    threshold: float = 0.1,
+) -> torch.Tensor:
+    """Penalize base linear velocity when the command is (almost) zero.
+
+    This term encourages the robot to remain stable during *standing* episodes
+    (i.e. when the commanded linear velocity magnitude is below ``threshold``).
+
+    The returned value is the L1 norm of the xy-components of the base linear
+    velocity expressed in the robot frame, gated so that it contributes **only**
+    for standing commands.
+    """
+
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    # commanded linear velocity (body frame)
+    cmd_lin_vel_xy = env.command_manager.get_command(command_name)[:, :2]
+    cmd_speed = torch.norm(cmd_lin_vel_xy, dim=1)
+
+    # determine which envs are in standing mode
+    is_standing = cmd_speed < threshold
+
+    # L1 error (command is ~0) – use absolute actual velocity
+    lin_vel_error = torch.sum(torch.abs(asset.data.root_lin_vel_b[:, :2]), dim=1)
+
+    # only penalize standing envs
+    return lin_vel_error * is_standing.float()
+
+def flat_orientation_l1(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """L1 penalty on roll/pitch: sum(|gravity_body_frame.xy|). Zero when upright."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return torch.sum(torch.abs(asset.data.projected_gravity_b[:, :2]), dim=1)
 
 def randomize_imu_mount(
     env: ManagerBasedEnv,
@@ -281,6 +325,25 @@ def velocity_push_curriculum(
         "push_velocity_magnitude": current_velocity,
     }
 
+def command_pos_limits(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """
+    Penalise commanded targets from the policy that exceed the limits.
+
+    Works with any PD/implicit/explicit actuator as long as the action is
+    interpreted as a desired joint position.
+    """
+    asset = env.scene[asset_cfg.name]
+    processed_actions = asset.data.joint_pos_target[:, asset_cfg.joint_ids]
+    
+    low_limits = asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 0]
+    high_limits = asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 1]
+    
+    below = (low_limits - processed_actions).clamp(min=0.0)
+    above = (processed_actions - high_limits).clamp(min=0.0)
+    return torch.sum(below + above, dim=1)
 
 @configclass
 class KBotRewards(RewardsCfg):
@@ -298,6 +361,16 @@ class KBotRewards(RewardsCfg):
         weight=1.0,
         params={"command_name": "base_velocity", "std": 0.5},
     )
+    
+    # Standing stability penalty (active only for near-zero velocity commands)
+    standing_lin_vel_l1 = RewTerm(
+        func=standing_lin_vel_l1,
+        weight=-1.0,
+        params={
+            "command_name": "base_velocity",
+            "threshold": 0.1,
+        },
+    )
 
     feet_air_time = RewTerm(
         func=mdp.feet_air_time_positive_biped,
@@ -308,7 +381,7 @@ class KBotRewards(RewardsCfg):
                 "contact_forces",
                 body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
             ),
-            "threshold": 0.4,
+            "threshold": 0.8,
         },
     )
     feet_slide = RewTerm(
@@ -325,18 +398,18 @@ class KBotRewards(RewardsCfg):
         },
     )
 
-    foot_height = RewTerm(
-        func=foot_height_reward,
-        weight=0.5,
-        params={
-            "target_height": 0.2,  # 15cm target height for swing phase
-            "std": 0.05,           # Standard deviation for exponential kernel
-            "tanh_mult": 2.0,      # Velocity multiplier for swing detection
-            "asset_cfg": SceneEntityCfg(
-                "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
-            ),
-        },
-    )
+    # foot_height = RewTerm(
+    #     func=foot_height_reward,
+    #     weight=0.5,
+    #     params={
+    #         "target_height": 0.2,  # 15cm target height for swing phase
+    #         "std": 0.05,           # Standard deviation for exponential kernel
+    #         "tanh_mult": 2.0,      # Velocity multiplier for swing detection
+    #         "asset_cfg": SceneEntityCfg(
+    #             "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+    #         ),
+    #     },
+    # )
 
     # Joint-limit & deviation penalties
     dof_pos_limits = RewTerm(
@@ -346,6 +419,14 @@ class KBotRewards(RewardsCfg):
             "asset_cfg": SceneEntityCfg(
                 "robot", joint_names=["dof_left_ankle_02", "dof_right_ankle_02"]
             )
+        },
+    )
+    
+    command_pos_limits = RewTerm(
+        func=command_pos_limits,
+        weight=-2.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
         },
     )
 
@@ -399,13 +480,13 @@ class KBotRewards(RewardsCfg):
                 "robot",
                 joint_names=[
                     # left arm
-                    # "dof_left_shoulder_pitch_03",
+                    "dof_left_shoulder_pitch_03",
                     "dof_left_shoulder_roll_03",
                     "dof_left_shoulder_yaw_02",
                     "dof_left_elbow_02",
                     "dof_left_wrist_00",
                     # right arm
-                    # "dof_right_shoulder_pitch_03",
+                    "dof_right_shoulder_pitch_03",
                     "dof_right_shoulder_roll_03",
                     "dof_right_shoulder_yaw_02",
                     "dof_right_elbow_02",
@@ -415,24 +496,40 @@ class KBotRewards(RewardsCfg):
         },
     )
 
-    joint_deviation_shoulder_pitch = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.4,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=[
-                    "dof_left_shoulder_pitch_03",
-                    "dof_right_shoulder_pitch_03",
-                ],
-            )
-        },
-    )
+    # joint_deviation_shoulder_pitch = RewTerm(
+    #     func=mdp.joint_deviation_l1,
+    #     weight=-0.4,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg(
+    #             "robot",
+    #             joint_names=[
+    #                 "dof_left_shoulder_pitch_03",
+    #                 "dof_right_shoulder_pitch_03",
+    #             ],
+    #         )
+    #     },
+    # )
 
     # Action smoothness penalty
     action_acceleration_l2 = RewTerm(
         func=action_acceleration_l2,
         weight=-0.1,
+    )
+
+    flat_orientation_l1 = RewTerm(
+        func=flat_orientation_l1,
+        weight=-5.0,
+    )
+    
+    feet_separation_penalty = RewTerm(
+        func=mdp.body_distance_penalty,        # already defined helper
+        weight=-2.0,                       # start here; tune as needed
+        params={
+            "min_distance": 0.25,          # 25 cm safety margin,
+            "asset_cfg": SceneEntityCfg("robot"),
+            "body_a_names": ["KB_D_501L_L_LEG_FOOT"],   # left  foot body name
+            "body_b_names": ["KB_D_501R_R_LEG_FOOT"],   # right foot body name
+        },
     )
 
     # Foot contact force penalty - L2 penalty above threshold
@@ -448,41 +545,41 @@ class KBotRewards(RewardsCfg):
     #     },
     # )
 
-    # No stomping reward
-    # Foot-impact regulariser (discourages stomping)
-    foot_impact_penalty = RewTerm(
-        func=mdp.contact_forces,
-        weight=-1.5e-3,
-        params={
-            "threshold": 358.0,  # Manually checked static load of the kbot while standing
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=[
-                    "KB_D_501L_L_LEG_FOOT",
-                    "KB_D_501R_R_LEG_FOOT",
-                    "Torso_Side_Right",
-                    "KC_D_102L_L_Hip_Yoke_Drive",
-                    "RS03_5",
-                    "KC_D_301L_L_Femur_Lower_Drive",
-                    "KC_D_401L_L_Shin_Drive",
-                    "KC_C_104L_PitchHardstopDriven",
-                    "RS03_6",
-                    "KC_C_202L",
-                    "KC_C_401L_L_UpForearmDrive",
-                    "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
-                    "KC_D_102R_R_Hip_Yoke_Drive",
-                    "RS03_4",
-                    "KC_D_301R_R_Femur_Lower_Drive",
-                    "KC_D_401R_R_Shin_Drive",
-                    "KC_C_104R_PitchHardstopDriven",
-                    "RS03_3",
-                    "KC_C_202R",
-                    "KC_C_401R_R_UpForearmDrive",
-                    "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
-                ],
-            ),
-        },
-    )
+    # # No stomping reward
+    # # Foot-impact regulariser (discourages stomping)
+    # foot_impact_penalty = RewTerm(
+    #     func=mdp.contact_forces,
+    #     weight=-1.5e-3,
+    #     params={
+    #         "threshold": 358.0,  # Manually checked static load of the kbot while standing
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "contact_forces",
+    #             body_names=[
+    #                 "KB_D_501L_L_LEG_FOOT",
+    #                 "KB_D_501R_R_LEG_FOOT",
+    #                 "Torso_Side_Right",
+    #                 "KC_D_102L_L_Hip_Yoke_Drive",
+    #                 "RS03_5",
+    #                 "KC_D_301L_L_Femur_Lower_Drive",
+    #                 "KC_D_401L_L_Shin_Drive",
+    #                 "KC_C_104L_PitchHardstopDriven",
+    #                 "RS03_6",
+    #                 "KC_C_202L",
+    #                 "KC_C_401L_L_UpForearmDrive",
+    #                 "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+    #                 "KC_D_102R_R_Hip_Yoke_Drive",
+    #                 "RS03_4",
+    #                 "KC_D_301R_R_Femur_Lower_Drive",
+    #                 "KC_D_401R_R_Shin_Drive",
+    #                 "KC_C_104R_PitchHardstopDriven",
+    #                 "RS03_3",
+    #                 "KC_C_202R",
+    #                 "KC_C_401R_R_UpForearmDrive",
+    #                 "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+    #             ],
+    #         ),
+    #     },
+    # )
 
 
 @configclass
@@ -640,8 +737,8 @@ class KBotCurriculumCfg:
         params={
             "min_push": 0.01,
             "max_push": 0.5,
-            "curriculum_start_step": 24 * 500,
-            "curriculum_stop_step": 24 * 5500,
+            "curriculum_start_step": 24 * 5000,
+            "curriculum_stop_step": 24 * 1000,
         },
     )
 
@@ -851,7 +948,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
-        self.commands.base_velocity.rel_standing_envs = 0.2
+        self.commands.base_velocity.rel_standing_envs = 0.3
 
         # Terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = [
@@ -901,7 +998,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
         self.events.reset_robot_joints.func = mdp.reset_joints_by_scale
         self.events.reset_base.params = {
-            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
+            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "velocity_range": {
                 "x": (0.0, 0.0),
                 "y": (0.0, 0.0),
@@ -930,6 +1027,10 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 act_cfg.min_delay = 0
             if hasattr(act_cfg, "max_delay"):
                 act_cfg.max_delay = 0
+                
+        # Remove command pose limits
+        if hasattr(self.rewards, "command_pos_limits"):
+            self.rewards.command_pos_limits = None
 
 
 @configclass
