@@ -738,7 +738,7 @@ class KBotCurriculumCfg:
             "min_push": 0.01,
             "max_push": 0.5,
             "curriculum_start_step": 24 * 5000,
-            "curriculum_stop_step": 24 * 1000,
+            "curriculum_stop_step": 24 * 10_000,
         },
     )
 
