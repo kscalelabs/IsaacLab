@@ -737,15 +737,15 @@ class KBotCurriculumCfg:
         params={
             "min_push": 0.01,
             "max_push": 0.5,
-            "curriculum_start_step": 24 * 5000,
-            "curriculum_stop_step": 24 * 10_000,
+            "curriculum_start_step": 24 * 1500,
+            "curriculum_stop_step": 24 * 6500,
         },
     )
 
 
 @configclass
 class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-    enable_randomization: bool = True
+    enable_randomization: bool = False
     rewards: KBotRewards = KBotRewards()
     observations: KBotObservations = KBotObservations()
     curriculum: KBotCurriculumCfg = KBotCurriculumCfg()
@@ -1030,7 +1030,13 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 
         # Remove command pose limits
         if hasattr(self.rewards, "command_pos_limits"):
+            print("[INFO]: Removing command pose limits!")
             self.rewards.command_pos_limits = None
+
+        # Remove flat orientation l1 penalty
+        if hasattr(self.rewards, "flat_orientation_l1"):
+            print("[INFO]: Removing flat orientation l1 penalty!")
+            self.rewards.flat_orientation_l1 = None
 
 
 @configclass
