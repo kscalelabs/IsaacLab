@@ -362,15 +362,7 @@ class KBotRewards(RewardsCfg):
         params={"command_name": "base_velocity", "std": 0.5},
     )
     
-    # Standing stability penalty (active only for near-zero velocity commands)
-    standing_lin_vel_l1 = RewTerm(
-        func=standing_lin_vel_l1,
-        weight=-1.0,
-        params={
-            "command_name": "base_velocity",
-            "threshold": 0.1,
-        },
-    )
+
 
     feet_air_time = RewTerm(
         func=mdp.feet_air_time_positive_biped,
@@ -381,7 +373,7 @@ class KBotRewards(RewardsCfg):
                 "contact_forces",
                 body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
             ),
-            "threshold": 0.8,
+            "threshold": 0.4,
         },
     )
     feet_slide = RewTerm(
@@ -398,18 +390,18 @@ class KBotRewards(RewardsCfg):
         },
     )
 
-    # foot_height = RewTerm(
-    #     func=foot_height_reward,
-    #     weight=0.5,
-    #     params={
-    #         "target_height": 0.2,  # 15cm target height for swing phase
-    #         "std": 0.05,           # Standard deviation for exponential kernel
-    #         "tanh_mult": 2.0,      # Velocity multiplier for swing detection
-    #         "asset_cfg": SceneEntityCfg(
-    #             "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
-    #         ),
-    #     },
-    # )
+    foot_height = RewTerm(
+        func=foot_height_reward,
+        weight=0.5,
+        params={
+            "target_height": 0.2,
+            "std": 0.05,
+            "tanh_mult": 2.0,
+            "asset_cfg": SceneEntityCfg(
+                "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+            ),
+        },
+    )
 
     # Joint-limit & deviation penalties
     dof_pos_limits = RewTerm(
@@ -422,13 +414,7 @@ class KBotRewards(RewardsCfg):
         },
     )
     
-    command_pos_limits = RewTerm(
-        func=command_pos_limits,
-        weight=-2.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
-        },
-    )
+
 
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
@@ -480,13 +466,13 @@ class KBotRewards(RewardsCfg):
                 "robot",
                 joint_names=[
                     # left arm
-                    "dof_left_shoulder_pitch_03",
+                    # "dof_left_shoulder_pitch_03",
                     "dof_left_shoulder_roll_03",
                     "dof_left_shoulder_yaw_02",
                     "dof_left_elbow_02",
                     "dof_left_wrist_00",
                     # right arm
-                    "dof_right_shoulder_pitch_03",
+                    # "dof_right_shoulder_pitch_03",
                     "dof_right_shoulder_roll_03",
                     "dof_right_shoulder_yaw_02",
                     "dof_right_elbow_02",
@@ -496,19 +482,19 @@ class KBotRewards(RewardsCfg):
         },
     )
 
-    # joint_deviation_shoulder_pitch = RewTerm(
-    #     func=mdp.joint_deviation_l1,
-    #     weight=-0.4,
-    #     params={
-    #         "asset_cfg": SceneEntityCfg(
-    #             "robot",
-    #             joint_names=[
-    #                 "dof_left_shoulder_pitch_03",
-    #                 "dof_right_shoulder_pitch_03",
-    #             ],
-    #         )
-    #     },
-    # )
+    joint_deviation_shoulder_pitch = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.4,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    "dof_left_shoulder_pitch_03",
+                    "dof_right_shoulder_pitch_03",
+                ],
+            )
+        },
+    )
 
     # Action smoothness penalty
     action_acceleration_l2 = RewTerm(
@@ -516,19 +502,16 @@ class KBotRewards(RewardsCfg):
         weight=-0.1,
     )
 
-    flat_orientation_l1 = RewTerm(
-        func=flat_orientation_l1,
-        weight=-5.0,
-    )
-    
-    feet_separation_penalty = RewTerm(
-        func=mdp.body_distance_penalty,        # already defined helper
-        weight=-2.0,                       # start here; tune as needed
+
+    foot_contact_force_l2 = RewTerm(
+        func=contact_forces_l2_penalty,
+        weight=-1.0e-7,
         params={
-            "min_distance": 0.25,          # 25 cm safety margin,
-            "asset_cfg": SceneEntityCfg("robot"),
-            "body_a_names": ["KB_D_501L_L_LEG_FOOT"],   # left  foot body name
-            "body_b_names": ["KB_D_501R_R_LEG_FOOT"],   # right foot body name
+            "threshold": 360.0,
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+            ),
         },
     )
 
@@ -737,8 +720,8 @@ class KBotCurriculumCfg:
         params={
             "min_push": 0.01,
             "max_push": 0.5,
-            "curriculum_start_step": 24 * 2000,
-            "curriculum_stop_step": 24 * 6000,
+            "curriculum_start_step": 12000,
+            "curriculum_stop_step": 132000,
         },
     )
 
@@ -753,6 +736,9 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
+
+        # Match Hellman scale and joint soft-limit margin
+        self.scene.num_envs = 8192
 
         # Scene
         self.scene.robot = KBOT_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
@@ -948,7 +934,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
-        self.commands.base_velocity.rel_standing_envs = 0.3
+        self.commands.base_velocity.rel_standing_envs = 0.2
 
         # Terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = [
@@ -1028,20 +1014,8 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             if hasattr(act_cfg, "max_delay"):
                 act_cfg.max_delay = 0
                 
-        # Remove command pose limits
-        if hasattr(self.rewards, "command_pos_limits"):
-            print("[INFO]: Removing command pose limits!")
-            self.rewards.command_pos_limits = None
-
-        # Remove flat orientation l1 penalty
-        if hasattr(self.rewards, "flat_orientation_l1"):
-            print("[INFO]: Removing flat orientation l1 penalty!")
-            self.rewards.flat_orientation_l1 = None
-            
-        # Remove standing lin_vel_l1 reward 
-        if hasattr(self.rewards, "standing_lin_vel_l1"):
-            print("[INFO]: Removing standing lin_vel_l1 reward!")
-            self.rewards.standing_lin_vel_l1 = None
+        # These rewards were already removed from KBotRewards to match Hellman
+        # No need to remove command_pos_limits, flat_orientation_l1, or standing_lin_vel_l1
 
 
 @configclass
