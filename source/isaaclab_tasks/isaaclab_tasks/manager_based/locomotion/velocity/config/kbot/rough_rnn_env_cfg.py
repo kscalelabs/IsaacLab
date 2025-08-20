@@ -35,8 +35,6 @@ from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.assets import RigidObject, Articulation
 
 
-
-
 def action_acceleration_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Penalize the acceleration (second derivative) of actions using L2 squared kernel.
     
