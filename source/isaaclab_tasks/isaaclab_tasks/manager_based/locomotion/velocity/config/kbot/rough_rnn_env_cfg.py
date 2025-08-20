@@ -515,6 +515,18 @@ class KBotRewards(RewardsCfg):
         },
     )
 
+
+    feet_separation_penalty = RewTerm(
+        func=mdp.body_distance_penalty,        # already defined helper
+        weight=-2.0,                       # start here; tune as needed
+        params={
+            "min_distance": 0.25,          # 25 cm safety margin,
+            "asset_cfg": SceneEntityCfg("robot"),
+            "body_a_names": ["KB_D_501L_L_LEG_FOOT"],   # left  foot body name
+            "body_b_names": ["KB_D_501R_R_LEG_FOOT"],   # right foot body name
+        },
+    )
+
     # Foot contact force penalty - L2 penalty above threshold
     # foot_contact_force_l2 = RewTerm(
     #     func=contact_forces_l2_penalty,
