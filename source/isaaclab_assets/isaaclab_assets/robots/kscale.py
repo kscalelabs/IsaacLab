@@ -234,6 +234,6 @@ KBOT_CFG = ArticulationCfg(
         joint_pos=_INIT_JOINT_POS,
         joint_vel={".*": 0.0},
     ),
-    soft_joint_pos_limit_factor=0.9,
+    soft_joint_pos_limit_factor=1.0,
     actuators=_ACTUATORS,
 )
