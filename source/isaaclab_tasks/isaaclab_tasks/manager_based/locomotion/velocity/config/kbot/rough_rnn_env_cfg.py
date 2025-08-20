@@ -414,8 +414,6 @@ class KBotRewards(RewardsCfg):
         },
     )
     
-
-
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.5,
@@ -466,13 +464,13 @@ class KBotRewards(RewardsCfg):
                 "robot",
                 joint_names=[
                     # left arm
-                    # "dof_left_shoulder_pitch_03",
+                    "dof_left_shoulder_pitch_03",
                     "dof_left_shoulder_roll_03",
                     "dof_left_shoulder_yaw_02",
                     "dof_left_elbow_02",
                     "dof_left_wrist_00",
                     # right arm
-                    # "dof_right_shoulder_pitch_03",
+                    "dof_right_shoulder_pitch_03",
                     "dof_right_shoulder_roll_03",
                     "dof_right_shoulder_yaw_02",
                     "dof_right_elbow_02",
@@ -482,19 +480,6 @@ class KBotRewards(RewardsCfg):
         },
     )
 
-    joint_deviation_shoulder_pitch = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.4,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=[
-                    "dof_left_shoulder_pitch_03",
-                    "dof_right_shoulder_pitch_03",
-                ],
-            )
-        },
-    )
 
     # Action smoothness penalty
     action_acceleration_l2 = RewTerm(
@@ -517,64 +502,15 @@ class KBotRewards(RewardsCfg):
 
 
     feet_separation_penalty = RewTerm(
-        func=mdp.body_distance_penalty,        # already defined helper
-        weight=-2.0,                       # start here; tune as needed
+        func=mdp.body_distance_penalty,
+        weight=-2.0,
         params={
-            "min_distance": 0.25,          # 25 cm safety margin,
+            "min_distance": 0.25, # Manually measured distance between feet
             "asset_cfg": SceneEntityCfg("robot"),
-            "body_a_names": ["KB_D_501L_L_LEG_FOOT"],   # left  foot body name
-            "body_b_names": ["KB_D_501R_R_LEG_FOOT"],   # right foot body name
+            "body_a_names": ["KB_D_501L_L_LEG_FOOT"],
+            "body_b_names": ["KB_D_501R_R_LEG_FOOT"],
         },
     )
-
-    # Foot contact force penalty - L2 penalty above threshold
-    # foot_contact_force_l2 = RewTerm(
-    #     func=contact_forces_l2_penalty,
-    #     weight=-1.0e-7,
-    #     params={
-    #         "threshold": 360.0,
-    #         "sensor_cfg": SceneEntityCfg(
-    #             "contact_forces",
-    #             body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
-    #         ),
-    #     },
-    # )
-
-    # # No stomping reward
-    # # Foot-impact regulariser (discourages stomping)
-    # foot_impact_penalty = RewTerm(
-    #     func=mdp.contact_forces,
-    #     weight=-1.5e-3,
-    #     params={
-    #         "threshold": 358.0,  # Manually checked static load of the kbot while standing
-    #         "sensor_cfg": SceneEntityCfg(
-    #             "contact_forces",
-    #             body_names=[
-    #                 "KB_D_501L_L_LEG_FOOT",
-    #                 "KB_D_501R_R_LEG_FOOT",
-    #                 "Torso_Side_Right",
-    #                 "KC_D_102L_L_Hip_Yoke_Drive",
-    #                 "RS03_5",
-    #                 "KC_D_301L_L_Femur_Lower_Drive",
-    #                 "KC_D_401L_L_Shin_Drive",
-    #                 "KC_C_104L_PitchHardstopDriven",
-    #                 "RS03_6",
-    #                 "KC_C_202L",
-    #                 "KC_C_401L_L_UpForearmDrive",
-    #                 "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
-    #                 "KC_D_102R_R_Hip_Yoke_Drive",
-    #                 "RS03_4",
-    #                 "KC_D_301R_R_Femur_Lower_Drive",
-    #                 "KC_D_401R_R_Shin_Drive",
-    #                 "KC_C_104R_PitchHardstopDriven",
-    #                 "RS03_3",
-    #                 "KC_C_202R",
-    #                 "KC_C_401R_R_UpForearmDrive",
-    #                 "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
-    #             ],
-    #         ),
-    #     },
-    # )
 
 
 @configclass
@@ -595,11 +531,10 @@ class KBotObservations:
         velocity_commands = ObsTerm(
             func=mdp.generated_commands, params={"command_name": "base_velocity"}
         )
-        # Replaced with privileged observations without noise below
-        # joint_pos = ObsTerm(
-        #     func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01)
-        # )
-        # joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01)
+        )
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
         height_scan = ObsTerm(
             func=mdp.height_scan,
@@ -655,16 +590,6 @@ class KBotObservations:
             noise=Unoise(n_min=-0.0001, n_max=0.0001),
         )
 
-        # Joint positions and velocities with less noise (privileged accurate state)
-        joint_pos_accurate = ObsTerm(
-            func=mdp.joint_pos_rel,
-            noise=Unoise(n_min=-0.0001, n_max=0.0001),
-        )
-        joint_vel_accurate = ObsTerm(
-            func=mdp.joint_vel_rel,
-            noise=Unoise(n_min=-0.0001, n_max=0.0001),
-        )
-
         # Base position (full pose information - privileged)
         base_pos = ObsTerm(
             func=mdp.base_pos_z, noise=Unoise(n_min=-0.0001, n_max=0.0001)
@@ -697,14 +622,16 @@ class KBotObservations:
             func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.1, n_max=0.1)
         )
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.0, n_max=1.0))
-        # IMU observations
         imu_ang_vel = ObsTerm(
             func=mdp.imu_ang_vel,
             params={"asset_cfg": SceneEntityCfg("imu")},
             noise=Unoise(n_min=-0.2, n_max=0.2),
         )
+
+        # Useful for MLP policies (not RNNs)
         # actions = ObsTerm(func=mdp.last_action)
-        # No linear acceleration for now
+
+        # (Optional) Linear acceleration from IMU
         # imu_lin_acc = ObsTerm(
         #     func=mdp.imu_lin_acc,
         #     params={"asset_cfg": SceneEntityCfg("imu")},
@@ -787,7 +714,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "dynamic_friction_range": (0.1, 2.0),
                 "restitution_range": (0.0, 0.1),
                 "num_buckets": 64,
-                "make_consistent": True,  # Ensure dynamic friction is always less than static friction
+                "make_consistent": True, # Ensure dynamic friction is always less than static friction
             },
         )
 
@@ -976,10 +903,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             self._disable_randomization()
 
     def _disable_randomization(self):
-        """Disable all randomization for easy early training.
-
-        Use with command line arg: env.enable_randomization=false
-        """
+        """Disable all randomization for easy early training."""
         
         print("[INFO]: Disabling all domain randomization!\n" * 5, end="")
 
@@ -1026,8 +950,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             if hasattr(act_cfg, "max_delay"):
                 act_cfg.max_delay = 0
                 
-        # These rewards were already removed from KBotRewards to match Hellman
-        # No need to remove command_pos_limits, flat_orientation_l1, or standing_lin_vel_l1
+
 
 
 @configclass
