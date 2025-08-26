@@ -88,6 +88,11 @@ class KBotLocoManipRewards(KBotRewards):
         },
     )
 
+    # constant reward for staying alive
+    alive = RewTerm(
+        func=mdp.is_alive,
+        weight=0.1,
+    )
 
 
 @configclass
