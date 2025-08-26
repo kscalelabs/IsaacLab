@@ -29,7 +29,7 @@ class KBotLocoManipRewards(KBotRewards):
     joint_vel_hip_yaw = RewTerm(
         func=mdp.joint_vel_l2,
         weight=-0.001,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_leg_hip_yaw"])},
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_yaw.*"])},
     )
 
     left_ee_pos_tracking = RewTerm(
