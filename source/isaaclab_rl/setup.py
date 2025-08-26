@@ -20,7 +20,7 @@ EXTENSION_TOML_DATA = toml.load(os.path.join(EXTENSION_PATH, "config", "extensio
 INSTALL_REQUIRES = [
     # generic
     "numpy<2",
-    "torch==2.5.1",
+    "torch>=2.7",
     "torchvision>=0.14.1",  # ensure compatibility with torch 1.13.1
     "protobuf>=3.20.2,!=5.26.0",
     # configuration management
@@ -41,7 +41,10 @@ PYTORCH_INDEX_URL = ["https://download.pytorch.org/whl/cu118"]
 EXTRAS_REQUIRE = {
     "sb3": ["stable-baselines3>=2.6", "tqdm", "rich"],  # tqdm/rich for progress bar
     "skrl": ["skrl>=1.4.2"],
-    "rl-games": ["rl-games==1.6.1", "gym"],  # rl-games still needs gym :(
+    "rl-games": [
+        "rl-games @ git+https://github.com/kellyguo11/rl_games.git@python3.11",
+        "gym",
+    ],  # rl-games still needs gym :(
     "rsl-rl": ["rsl-rl-lib==2.3.3"],
 }
 # Add the names with hyphens as aliases for convenience
@@ -71,7 +74,9 @@ setup(
     classifiers=[
         "Natural Language :: English",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Isaac Sim :: 4.5.0",
+        "Isaac Sim :: 5.0.0",
     ],
     zip_safe=False,
 )

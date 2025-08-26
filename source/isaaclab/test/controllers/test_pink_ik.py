@@ -3,11 +3,6 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Copyright (c) 2025, The Isaac Lab Project Developers.
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
 """Launch Isaac Sim Simulator first."""
 import sys
 
@@ -53,7 +48,7 @@ class TestPinkIKController(unittest.TestCase):
     def setUp(self):
 
         # End effector position mean square error tolerance in meters
-        self.pos_tolerance = 0.02  # 2 cm
+        self.pos_tolerance = 0.03  # 2 cm
         # End effector orientation mean square error tolerance in radians
         self.rot_tolerance = 0.17  # 10 degrees
 

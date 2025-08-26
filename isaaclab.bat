@@ -114,6 +114,17 @@ if errorlevel 1 (
     echo [ERROR] Conda could not be found. Please install conda and try again.
     exit /b 1
 )
+
+rem check if _isaac_sim symlink exists and isaacsim-rl is not installed via pip
+if not exist "%ISAACLAB_PATH%\_isaac_sim" (
+    python -m pip list | findstr /C:"isaacsim-rl" >nul
+    if errorlevel 1 (
+        echo [WARNING] _isaac_sim symlink not found at %ISAACLAB_PATH%\_isaac_sim
+        echo     This warning can be ignored if you plan to install Isaac Sim via pip.
+        echo     If you are using a binary installation of Isaac Sim, please ensure the symlink is created before setting up the conda environment.
+    )
+)
+
 rem check if the environment exists
 call conda env list | findstr /c:"%env_name%" >nul
 if %errorlevel% equ 0 (
@@ -270,6 +281,26 @@ if "%arg%"=="-i" (
     rem install the python packages in isaaclab/source directory
     echo [INFO] Installing extensions inside the Isaac Lab repository...
     call :extract_python_exe
+    rem check if pytorch is installed and its version
+    rem install pytorch with cuda 12.8 for blackwell support
+    call !python_exe! -m pip list | findstr /C:"torch" >nul
+    if %errorlevel% equ 0 (
+        for /f "tokens=2" %%i in ('!python_exe! -m pip show torch ^| findstr /C:"Version:"') do (
+            set torch_version=%%i
+        )
+        if not "!torch_version!"=="2.7.0+cu128" (
+            echo [INFO] Uninstalling PyTorch version !torch_version!...
+            call !python_exe! -m pip uninstall -y torch torchvision torchaudio
+            echo [INFO] Installing PyTorch 2.7.0 with CUDA 12.8 support...
+            call !python_exe! -m pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
+        ) else (
+            echo [INFO] PyTorch 2.7.0 is already installed.
+        )
+    ) else (
+        echo [INFO] Installing PyTorch 2.7.0 with CUDA 12.8 support...
+        call !python_exe! -m pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
+    )
+
     for /d %%d in ("%ISAACLAB_PATH%\source\*") do (
         set ext_folder="%%d"
         call :install_isaaclab_extension
@@ -295,6 +326,27 @@ if "%arg%"=="-i" (
     rem install the python packages in source directory
     echo [INFO] Installing extensions inside the Isaac Lab repository...
     call :extract_python_exe
+
+    rem check if pytorch is installed and its version
+    rem install pytorch with cuda 12.8 for blackwell support
+    call !python_exe! -m pip list | findstr /C:"torch" >nul
+    if %errorlevel% equ 0 (
+        for /f "tokens=2" %%i in ('!python_exe! -m pip show torch ^| findstr /C:"Version:"') do (
+            set torch_version=%%i
+        )
+        if not "!torch_version!"=="2.7.0+cu128" (
+            echo [INFO] Uninstalling PyTorch version !torch_version!...
+            call !python_exe! -m pip uninstall -y torch torchvision torchaudio
+            echo [INFO] Installing PyTorch 2.7.0 with CUDA 12.8 support...
+            call !python_exe! -m pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
+        ) else (
+            echo [INFO] PyTorch 2.7.0 is already installed.
+        )
+    ) else (
+        echo [INFO] Installing PyTorch 2.7.0 with CUDA 12.8 support...
+        call !python_exe! -m pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
+    )
+
     for /d %%d in ("%ISAACLAB_PATH%\source\*") do (
         set ext_folder="%%d"
         call :install_isaaclab_extension

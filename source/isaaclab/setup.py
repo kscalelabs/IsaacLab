@@ -20,7 +20,7 @@ EXTENSION_TOML_DATA = toml.load(os.path.join(EXTENSION_PATH, "config", "extensio
 INSTALL_REQUIRES = [
     # generic
     "numpy<2",
-    "torch==2.5.1",
+    "torch>=2.7",
     "onnx==1.16.1",  # 1.16.2 throws access violation on Windows
     "prettytable==3.3.0",
     "toml",
@@ -73,7 +73,9 @@ setup(
     classifiers=[
         "Natural Language :: English",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Isaac Sim :: 4.5.0",
+        "Isaac Sim :: 5.0.0",
     ],
     zip_safe=False,
 )
