@@ -30,3 +30,13 @@ gym.register(
     "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:KBotLocoManipPPORunnerCfg",
     },
 )
+
+gym.register(
+    id="Isaac-Tracking-LocoManip-KBot-RNN-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.rough_rnn_env_cfg:KBotLocoManipEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:KBotFlatRNNPPORunnerCfg",
+    },
+)
