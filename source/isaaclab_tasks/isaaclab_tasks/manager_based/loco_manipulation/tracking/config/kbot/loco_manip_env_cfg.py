@@ -106,10 +106,6 @@ class KBotLocoManipObservations:
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
-        velocity_commands = ObsTerm(
-            func=mdp.generated_commands,
-            params={"command_name": "base_velocity"},
-        )
         left_ee_pose_command = ObsTerm(
             func=mdp.generated_commands,
             params={"command_name": "left_ee_pose"},
@@ -120,13 +116,11 @@ class KBotLocoManipObservations:
         )
         joint_pos = ObsTerm(
             func=mdp.joint_pos_rel,
-            # TODO: Confirm LEG_JOINT_NAMES + ARM_JOINT_NAMES match KBot joint naming.
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=LEG_JOINT_NAMES + ARM_JOINT_NAMES)},
             noise=Unoise(n_min=-0.01, n_max=0.01),
         )
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
-            # TODO: Confirm LEG_JOINT_NAMES + ARM_JOINT_NAMES match KBot joint naming.
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=LEG_JOINT_NAMES + ARM_JOINT_NAMES)},
             noise=Unoise(n_min=-1.5, n_max=1.5),
         )
@@ -141,26 +135,11 @@ class KBotLocoManipObservations:
 
 @configclass
 class KBotLocoManipCommands:
-    base_velocity = mdp.UniformVelocityCommandCfg(
-        asset_name="robot",
-        resampling_time_range=(10.0, 10.0),
-        rel_standing_envs=0.25,
-        rel_heading_envs=1.0,
-        heading_command=True,
-        debug_vis=True,
-        ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-1.0, 1.0),
-            lin_vel_y=(-1.0, 1.0),
-            ang_vel_z=(-1.0, 1.0),
-            heading=(-math.pi, math.pi),
-        ),
-    )
 
     left_ee_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
-    # TODO: Verify this body exists on KBot asset.
-    body_name=LEFT_WRIST_NAME,
-        resampling_time_range=(1.0, 3.0),
+        body_name=LEFT_WRIST_NAME,
+        resampling_time_range=(0.5, 1.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
             pos_x=(0.10, 0.50),
@@ -174,9 +153,8 @@ class KBotLocoManipCommands:
 
     right_ee_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
-    # TODO: Verify this body exists on KBot asset.
-    body_name=RIGHT_WRIST_NAME,
-        resampling_time_range=(1.0, 3.0),
+        body_name=RIGHT_WRIST_NAME,
+        resampling_time_range=(0.5, 1.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
             pos_x=(0.10, 0.50),
