@@ -133,42 +133,42 @@ class KBotLocoManipObservations:
             params={"asset_cfg": SceneEntityCfg("imu")},
             noise=Unoise(n_min=-0.1, n_max=0.1),
         )
-        imu_lin_acc = ObsTerm(
-            func=mdp.imu_lin_acc,
-            params={"asset_cfg": SceneEntityCfg("imu")},
-            noise=Unoise(n_min=-0.1, n_max=0.1),
-        )
+        # imu_lin_acc = ObsTerm(
+        #     func=mdp.imu_lin_acc,
+        #     params={"asset_cfg": SceneEntityCfg("imu")},
+        #     noise=Unoise(n_min=-0.1, n_max=0.1),
+        # )
 
         # Privileged Critic Observations
         # Joint dynamics information (privileged)
-        joint_torques = ObsTerm(
-            func=mdp.joint_effort,
-            params={"asset_cfg": SceneEntityCfg("robot")},
-            noise=Unoise(n_min=-0.0001, n_max=0.0001),
-        )
+        # joint_torques = ObsTerm(
+        #     func=mdp.joint_effort,
+        #     params={"asset_cfg": SceneEntityCfg("robot")},
+        #     noise=Unoise(n_min=-0.0001, n_max=0.0001),
+        # )
 
         # Contact forces on feet (privileged foot contact information)
-        feet_contact_forces = ObsTerm(
-            func=mdp.body_incoming_wrench,
-            scale=0.01,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
-                )
-            },
-        )
+        # feet_contact_forces = ObsTerm(
+        #     func=mdp.body_incoming_wrench,
+        #     scale=0.01,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg(
+        #             "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+        #         )
+        #     },
+        # )
 
         # Body poses for important body parts (privileged state info)
-        body_poses = ObsTerm(
-            func=mdp.body_pose_w,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot",
-                    body_names=["base", "KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
-                )
-            },
-            noise=Unoise(n_min=-0.0001, n_max=0.0001),
-        )
+        # body_poses = ObsTerm(
+        #     func=mdp.body_pose_w,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg(
+        #             "robot",
+        #             body_names=["base", "KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+        #         )
+        #     },
+        #     noise=Unoise(n_min=-0.0001, n_max=0.0001),
+        # )
 
         # Joint positions and velocities with less noise (privileged accurate state)
         joint_pos_accurate = ObsTerm(
@@ -181,17 +181,17 @@ class KBotLocoManipObservations:
         )
 
         # Base position (full pose information - privileged)
-        base_pos = ObsTerm(
-            func=mdp.base_pos_z, noise=Unoise(n_min=-0.0001, n_max=0.0001)
-        )
+        # base_pos = ObsTerm(
+        #     func=mdp.base_pos_z, noise=Unoise(n_min=-0.0001, n_max=0.0001)
+        # )
 
         # Root state information (privileged)
-        root_lin_vel_w = ObsTerm(
-            func=mdp.root_lin_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001)
-        )
-        root_ang_vel_w = ObsTerm(
-            func=mdp.root_ang_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001)
-        )
+        # root_lin_vel_w = ObsTerm(
+        #     func=mdp.root_lin_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001)
+        # )
+        # root_ang_vel_w = ObsTerm(
+        #     func=mdp.root_ang_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001)
+        # )
 
         # No noise for the critic
         def __post_init__(self):
@@ -208,7 +208,6 @@ class KBotLocoManipObservations:
         velocity_commands = ObsTerm(
             func=mdp.generated_commands, params={"command_name": "base_velocity"}
         )
-
         left_ee_pose_command = ObsTerm(
             func=mdp.generated_commands,
             params={"command_name": "left_ee_pose"},
@@ -218,9 +217,9 @@ class KBotLocoManipObservations:
             params={"command_name": "right_ee_pose"},
         )
         joint_pos = ObsTerm(
-            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.05, n_max=0.05)
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01)
         )
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-0.5, n_max=0.5))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         # IMU observations
         imu_ang_vel = ObsTerm(
             func=mdp.imu_ang_vel,
