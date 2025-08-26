@@ -208,6 +208,15 @@ class KBotLocoManipObservations:
         velocity_commands = ObsTerm(
             func=mdp.generated_commands, params={"command_name": "base_velocity"}
         )
+
+        left_ee_pose_command = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "left_ee_pose"},
+        )
+        right_ee_pose_command = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "right_ee_pose"},
+        )
         joint_pos = ObsTerm(
             func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.05, n_max=0.05)
         )
