@@ -89,22 +89,24 @@ class KBotLocoManipRewards(KBotRewards):
     )
 
 
+
 @configclass
 class KBotLocoManipObservations:
-
     @configclass
-    class PolicyCfg(ObsGroup):
+    class CriticCfg(ObsGroup):
+        # observation terms (order preserved)
         base_lin_vel = ObsTerm(
-            func=mdp.base_lin_vel,
-            noise=Unoise(n_min=-0.1, n_max=0.1),
+            func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1)
         )
         base_ang_vel = ObsTerm(
-            func=mdp.base_ang_vel,
-            noise=Unoise(n_min=-0.2, n_max=0.2),
+            func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2)
         )
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
+        velocity_commands = ObsTerm(
+            func=mdp.generated_commands, params={"command_name": "base_velocity"}
         )
         left_ee_pose_command = ObsTerm(
             func=mdp.generated_commands,
@@ -114,27 +116,150 @@ class KBotLocoManipObservations:
             func=mdp.generated_commands,
             params={"command_name": "right_ee_pose"},
         )
-        joint_pos = ObsTerm(
-            func=mdp.joint_pos_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=LEG_JOINT_NAMES + ARM_JOINT_NAMES)},
-            noise=Unoise(n_min=-0.01, n_max=0.01),
-        )
-        joint_vel = ObsTerm(
-            func=mdp.joint_vel_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=LEG_JOINT_NAMES + ARM_JOINT_NAMES)},
-            noise=Unoise(n_min=-1.5, n_max=1.5),
-        )
+        # Replaced with privileged observations without noise below
+        # joint_pos = ObsTerm(
+        #     func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01)
+        # )
+        # joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+            clip=(-1.0, 1.0),
+        )
+        # IMU observations
+        imu_projected_gravity = ObsTerm(
+            func=mdp.imu_projected_gravity,
+            params={"asset_cfg": SceneEntityCfg("imu")},
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
+        imu_ang_vel = ObsTerm(
+            func=mdp.imu_ang_vel,
+            params={"asset_cfg": SceneEntityCfg("imu")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+        )
+        imu_lin_acc = ObsTerm(
+            func=mdp.imu_lin_acc,
+            params={"asset_cfg": SceneEntityCfg("imu")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+        )
+
+        # Privileged Critic Observations
+        # Joint dynamics information (privileged)
+        joint_torques = ObsTerm(
+            func=mdp.joint_effort,
+            params={"asset_cfg": SceneEntityCfg("robot")},
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),
+        )
+
+        # Contact forces on feet (privileged foot contact information)
+        feet_contact_forces = ObsTerm(
+            func=mdp.body_incoming_wrench,
+            scale=0.01,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+                )
+            },
+        )
+
+        # Body poses for important body parts (privileged state info)
+        body_poses = ObsTerm(
+            func=mdp.body_pose_w,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=["base", "KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+                )
+            },
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),
+        )
+
+        # Joint positions and velocities with less noise (privileged accurate state)
+        joint_pos_accurate = ObsTerm(
+            func=mdp.joint_pos_rel,
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),
+        )
+        joint_vel_accurate = ObsTerm(
+            func=mdp.joint_vel_rel,
+            noise=Unoise(n_min=-0.0001, n_max=0.0001),
+        )
+
+        # Base position (full pose information - privileged)
+        base_pos = ObsTerm(
+            func=mdp.base_pos_z, noise=Unoise(n_min=-0.0001, n_max=0.0001)
+        )
+
+        # Root state information (privileged)
+        root_lin_vel_w = ObsTerm(
+            func=mdp.root_lin_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001)
+        )
+        root_ang_vel_w = ObsTerm(
+            func=mdp.root_ang_vel_w, noise=Unoise(n_min=-0.0001, n_max=0.0001)
+        )
+
+        # No noise for the critic
+        def __post_init__(self):
+            self.enable_corruption = False
+
+    @configclass
+    class PolicyCfg(ObsGroup):
+        # observation terms (order preserved)
+        projected_gravity = ObsTerm(
+            func=mdp.imu_projected_gravity,
+            params={"asset_cfg": SceneEntityCfg("imu")},
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
+        velocity_commands = ObsTerm(
+            func=mdp.generated_commands, params={"command_name": "base_velocity"}
+        )
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.05, n_max=0.05)
+        )
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-0.5, n_max=0.5))
+        # IMU observations
+        imu_ang_vel = ObsTerm(
+            func=mdp.imu_ang_vel,
+            params={"asset_cfg": SceneEntityCfg("imu")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+        )
+
+        actions = ObsTerm(func=mdp.last_action)
+
+        # No linear acceleration for now
+        # imu_lin_acc = ObsTerm(
+        #     func=mdp.imu_lin_acc,
+        #     params={"asset_cfg": SceneEntityCfg("imu")},
+        #     noise=Unoise(n_min=-0.1, n_max=0.1)
+        # )
 
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = True
 
-    policy = PolicyCfg()
+    # Observation groups:
+    critic: CriticCfg = CriticCfg()
+    policy: PolicyCfg = PolicyCfg()
+
 
 
 @configclass
 class KBotLocoManipCommands:
+    base_velocity = mdp.UniformVelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(10.0, 10.0),
+        rel_standing_envs=1.0,
+        rel_heading_envs=1.0,
+        heading_command=False,
+        debug_vis=True,
+        ranges=mdp.UniformVelocityCommandCfg.Ranges(
+            lin_vel_x=(-1.0, 1.0),
+            lin_vel_y=(-1.0, 1.0),
+            ang_vel_z=(-1.0, 1.0),
+            # heading=(-math.pi, math.pi),
+        ),
+    )
 
     left_ee_pose = mdp.UniformPoseCommandCfg(
         asset_name="robot",
