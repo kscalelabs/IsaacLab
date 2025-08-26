@@ -237,3 +237,29 @@ KBOT_CFG = ArticulationCfg(
     soft_joint_pos_limit_factor=1.0,
     actuators=_ACTUATORS,
 )
+
+ARM_JOINT_NAMES = [
+    "dof_right_shoulder_pitch_03",
+    "dof_right_shoulder_roll_03",
+    "dof_right_shoulder_yaw_02",
+    "dof_right_elbow_02",
+    "dof_right_wrist_00",
+    "dof_left_shoulder_pitch_03",
+    "dof_left_shoulder_roll_03",
+    "dof_left_shoulder_yaw_02",
+    "dof_left_elbow_02",
+    "dof_left_wrist_00"
+]
+
+LEG_JOINT_NAMES = [
+    "dof_right_hip_pitch_04",
+    "dof_right_hip_roll_03",
+    "dof_right_hip_yaw_03",
+    "dof_right_knee_04",
+    "dof_right_ankle_02",
+    "dof_left_hip_pitch_04",
+    "dof_left_hip_roll_03",
+    "dof_left_hip_yaw_03",
+    "dof_left_knee_04",
+    "dof_left_ankle_02",
+]
