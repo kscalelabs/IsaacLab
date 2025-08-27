@@ -324,7 +324,9 @@ def velocity_push_curriculum(
     }
 
 def configure_randomization(env: LocomotionVelocityRoughEnvCfg):
-
+    if not hasattr(env, "events"): # IDK why it calls this with an object that doesn't have this property.
+        print("WARNING: skipping randomization configuration due to weird missing parameter problem")
+        return
     env.events.physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
         mode="reset",
@@ -806,16 +808,16 @@ class KBotCurriculumCfg:
         params={
             "min_push": 0.01,
             "max_push": 0.5,
-            "curriculum_start_step": 2000+12000,
-            "curriculum_stop_step": 2000+132000,
+            "curriculum_start_step": 6000+12000,
+            "curriculum_stop_step": 6000+132000,
         },
     )
 
     domain_randomize_curriculum = CurrTerm(
         func=domain_randomization_curriculum,
         params={
-            "curriculum_start_step": 2000,
-            "curriculum_stop_step": 3000,
+            "curriculum_start_step": 6000,
+            "curriculum_stop_step": 6000+132000,
         }
     )
 
