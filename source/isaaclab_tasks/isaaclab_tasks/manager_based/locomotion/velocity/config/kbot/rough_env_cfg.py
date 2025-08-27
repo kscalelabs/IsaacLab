@@ -301,6 +301,52 @@ def configure_randomization(env: LocomotionVelocityRoughEnvCfg):
         },
     }
 
+    env.observations.policy.enable_corruption = True
+
+    env.events.push_robot.mode = "interval"
+    env.events.push_robot.interval_range_s = (5.0, 15.0)
+    env.events.push_robot.params["velocity_range"] = {
+        "x": (-0.01, 0.01),
+        "y": (-0.01, 0.01),
+    }
+
+    # No stomping reward
+    # Foot-impact regulariser (discourages stomping)
+    env.rewards.foot_impact_penalty = RewTerm(
+        func=mdp.contact_forces,
+        weight=-1.5e-3,
+        params={
+            "threshold": 358.0,  # Manually checked static load of the kbot while standing
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=[
+                    "KB_D_501L_L_LEG_FOOT",
+                    "KB_D_501R_R_LEG_FOOT",
+                    "Torso_Side_Right",
+                    "KC_D_102L_L_Hip_Yoke_Drive",
+                    "RS03_5",
+                    "KC_D_301L_L_Femur_Lower_Drive",
+                    "KC_D_401L_L_Shin_Drive",
+                    "KC_C_104L_PitchHardstopDriven",
+                    "RS03_6",
+                    "KC_C_202L",
+                    "KC_C_401L_L_UpForearmDrive",
+                    "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
+                    "KC_D_102R_R_Hip_Yoke_Drive",
+                    "RS03_4",
+                    "KC_D_301R_R_Femur_Lower_Drive",
+                    "KC_D_401R_R_Shin_Drive",
+                    "KC_C_104R_PitchHardstopDriven",
+                    "RS03_3",
+                    "KC_C_202R",
+                    "KC_C_401R_R_UpForearmDrive",
+                    "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+                ],
+            ),
+        },
+    )
+
+
 def domain_randomization_curriculum(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor | None,
@@ -442,41 +488,6 @@ class KBotRewards(RewardsCfg):
         },
     )
 
-    # No stomping reward
-    # Foot-impact regulariser (discourages stomping)
-    foot_impact_penalty = RewTerm(
-        func=mdp.contact_forces,
-        weight=-1.5e-3,
-        params={
-            "threshold": 358.0,  # Manually checked static load of the kbot while standing
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=[
-                    "KB_D_501L_L_LEG_FOOT",
-                    "KB_D_501R_R_LEG_FOOT",
-                    "Torso_Side_Right",
-                    "KC_D_102L_L_Hip_Yoke_Drive",
-                    "RS03_5",
-                    "KC_D_301L_L_Femur_Lower_Drive",
-                    "KC_D_401L_L_Shin_Drive",
-                    "KC_C_104L_PitchHardstopDriven",
-                    "RS03_6",
-                    "KC_C_202L",
-                    "KC_C_401L_L_UpForearmDrive",
-                    "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
-                    "KC_D_102R_R_Hip_Yoke_Drive",
-                    "RS03_4",
-                    "KC_D_301R_R_Femur_Lower_Drive",
-                    "KC_D_401R_R_Shin_Drive",
-                    "KC_C_104R_PitchHardstopDriven",
-                    "RS03_3",
-                    "KC_C_202R",
-                    "KC_C_401R_R_UpForearmDrive",
-                    "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
-                ],
-            ),
-        },
-    )
 
 
 @configclass
@@ -616,7 +627,7 @@ class KBotObservations:
         # )
 
         def __post_init__(self):
-            self.enable_corruption = True
+            self.enable_corruption = False
             self.concatenate_terms = True
 
     # Observation groups:
@@ -636,8 +647,8 @@ class KBotCurriculumCfg:
         params={
             "min_push": 0.01,
             "max_push": 2.0,
-            "curriculum_start_step": 24 * 500,
-            "curriculum_stop_step": 24 * 5500,
+            "curriculum_start_step": 24 * 2500,
+            "curriculum_stop_step": 24 * 7500,
         },
     )
 
@@ -704,12 +715,6 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Joint initialization randomization
         # Reset by offset is needed since the default is to scale by zero
 
-        self.events.push_robot.mode = "interval"
-        self.events.push_robot.interval_range_s = (5.0, 15.0)
-        self.events.push_robot.params["velocity_range"] = {
-            "x": (-0.01, 0.01),
-            "y": (-0.01, 0.01),
-        }
 
         # Base reset randomization
 
@@ -784,12 +789,6 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "KC_C_401R_R_UpForearmDrive",
             "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
         ]
-
-        # Apply randomization settings based on flag
-        if self.enable_randomization:
-            configure_randomization(self)
-        else:
-            disable_randomization(self)
 
 
 
