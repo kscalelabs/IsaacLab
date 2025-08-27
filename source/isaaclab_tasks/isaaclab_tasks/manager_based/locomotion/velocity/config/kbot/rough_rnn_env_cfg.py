@@ -323,6 +323,155 @@ def velocity_push_curriculum(
         "push_velocity_magnitude": current_velocity,
     }
 
+def configure_randomization(env: LocomotionVelocityRoughEnvCfg):
+
+    env.events.physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", body_names=["LFootBushing_GPF_1517_12", "RFootBushing_GPF_1517_12"]
+            ),
+            "static_friction_range": (0.1, 2.0),
+            "dynamic_friction_range": (0.1, 2.0),
+            "restitution_range": (0.0, 0.1),
+            "num_buckets": 64,
+            "make_consistent": True, # Ensure dynamic friction is always less than static friction
+        },
+    )
+
+    # Individual link mass randomization for robustness
+    env.events.add_limb_masses = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=[
+                    "KD_B_102B_TORSO_BTM",
+                    "KD_D_102L_L_Hip_Yoke_Drive",
+                    "KD_C_101L_ShldYokeDrive",
+                    "KD_D_102R",
+                    "KC_C_101R_ShldYokeDrive",
+                    "L_Hip_Roll_RS03",
+                    "L_Hip_Roll_RS03_2",
+                    "RS03_4",
+                    "RS03_3",
+                    "KD_D_301L_L_Femur_Lower_Drive",
+                    "KD_C_301L_LowerBicepDrive",
+                    "KD_D_301R",
+                    "KC_C_202R",
+                    "KD_D_401L_L_Shin_Drive",
+                    "KC_C_401L_Up_Forearm_Drive",
+                    "KD_D_401R",
+                    "KC_C_401R_R_UpForearmDrive",
+                    "LFootBushing_GPF_1517_12",
+                    "PRT0001_2",
+                    "RFootBushing_GPF_1517_12",
+                    "PRT0001",
+                ],
+            ),
+            "mass_distribution_params": (0.8, 1.2),
+            "operation": "scale",
+            "distribution": "uniform",
+            "recompute_inertia": True,
+        },
+    )
+
+    # PD gains randomization
+    env.events.randomize_actuator_gains = EventTerm(
+        func=mdp.randomize_actuator_gains,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+            "stiffness_distribution_params": (0.8, 1.2),
+            "damping_distribution_params": (0.8, 1.2),
+            "operation": "scale",
+            "distribution": "uniform",
+        },
+    )
+
+    # Actuator friction and armature randomization
+    env.events.randomize_joint_properties = EventTerm(
+        func=mdp.randomize_joint_parameters,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+            "friction_distribution_params": (0.0, 0.3),
+            "armature_distribution_params": (0.8, 1.2),
+            "operation": "scale",
+            "distribution": "uniform",
+        },
+    )
+
+    env.events.randomize_imu_mount = EventTerm(
+        func=randomize_imu_mount,
+        mode="reset",
+        params={
+            "sensor_cfg": SceneEntityCfg("imu"),
+            "pos_range": {
+                "x": (-0.05, 0.05),
+                "y": (-0.05, 0.05),
+                "z": (-0.05, 0.05),
+            },
+            "rot_range": {
+                "roll": (-0.1, 0.1),
+                "pitch": (-0.1, 0.1),
+                "yaw": (-0.1, 0.1),
+            },
+        },
+    )
+
+    env.events.reset_robot_joints.params["position_range"] = (-0.2, 0.2)
+    env.events.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)
+
+    env.events.reset_base.params = {
+        "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+        "velocity_range": {
+            "x": (-0.3, 0.3),
+            "y": (-0.3, 0.3),
+            "z": (-0.1, 0.1),
+            "roll": (-0.2, 0.2),
+            "pitch": (-0.2, 0.2),
+            "yaw": (-0.2, 0.2),
+        },
+    }
+
+    env.events.push_robot.mode = "interval"
+    env.events.push_robot.interval_range_s = (5.0, 15.0)
+    env.events.push_robot.params["velocity_range"] = {
+        "x": (-0.01, 0.01),
+        "y": (-0.01, 0.01),
+    }
+    env.observations.policy.enable_corruption = True
+
+    for act_cfg in env.scene.robot.actuators.values():
+        if hasattr(act_cfg, "min_delay"):
+            act_cfg.min_delay = 0
+        if hasattr(act_cfg, "max_delay"):
+            act_cfg.max_delay = 4 # TODO: un-hardcode this by reading the default value, or other ways to make this less scuffed.
+
+
+def domain_randomization_curriculum(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    curriculum_start_step: int,
+    curriculum_stop_step: int,
+):
+    if env.common_step_counter < curriculum_start_step:
+        return {
+            "randomization": 0
+        }
+
+    # Calculate curriculum progress (0.0 to 1.0) from start_step to stop_step
+    curriculum_duration = curriculum_stop_step - curriculum_start_step
+    # TODO: make it ramp up domain randomization smoothly
+    configure_randomization(env)
+
+    return {
+        "randomization": 1
+    }
+
 def command_pos_limits(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -637,7 +786,7 @@ class KBotObservations:
         # )
 
         def __post_init__(self):
-            self.enable_corruption = True
+            self.enable_corruption = False
             self.concatenate_terms = True
 
     # Observation groups:
@@ -657,9 +806,17 @@ class KBotCurriculumCfg:
         params={
             "min_push": 0.01,
             "max_push": 0.5,
-            "curriculum_start_step": 12000,
-            "curriculum_stop_step": 132000,
+            "curriculum_start_step": 2000+12000,
+            "curriculum_stop_step": 2000+132000,
         },
+    )
+
+    domain_randomize_curriculum = CurrTerm(
+        func=domain_randomization_curriculum,
+        params={
+            "curriculum_start_step": 2000,
+            "curriculum_stop_step": 3000,
+        }
     )
 
 
@@ -701,129 +858,26 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # Physics material randomization (friction with the floor)
-        self.events.physics_material = EventTerm(
-            func=mdp.randomize_rigid_body_material,
-            mode="reset",
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot", body_names=["LFootBushing_GPF_1517_12", "RFootBushing_GPF_1517_12"]
-                ),
-                "static_friction_range": (0.1, 2.0),
-                "dynamic_friction_range": (0.1, 2.0),
-                "restitution_range": (0.0, 0.1),
-                "num_buckets": 64,
-                "make_consistent": True, # Ensure dynamic friction is always less than static friction
-            },
-        )
-
-        # Individual link mass randomization for robustness
-        self.events.add_limb_masses = EventTerm(
-            func=mdp.randomize_rigid_body_mass,
-            mode="reset",
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot",
-                    body_names=[
-                        "KD_B_102B_TORSO_BTM",
-                        "KD_D_102L_L_Hip_Yoke_Drive",
-                        "KD_C_101L_ShldYokeDrive",
-                        "KD_D_102R",
-                        "KC_C_101R_ShldYokeDrive",
-                        "L_Hip_Roll_RS03",
-                        "L_Hip_Roll_RS03_2",
-                        "RS03_4",
-                        "RS03_3",
-                        "KD_D_301L_L_Femur_Lower_Drive",
-                        "KD_C_301L_LowerBicepDrive",
-                        "KD_D_301R",
-                        "KC_C_202R",
-                        "KD_D_401L_L_Shin_Drive",
-                        "KC_C_401L_Up_Forearm_Drive",
-                        "KD_D_401R",
-                        "KC_C_401R_R_UpForearmDrive",
-                        "LFootBushing_GPF_1517_12",
-                        "PRT0001_2",
-                        "RFootBushing_GPF_1517_12",
-                        "PRT0001",
-                    ],
-                ),
-                "mass_distribution_params": (0.8, 1.2),
-                "operation": "scale",
-                "distribution": "uniform",
-                "recompute_inertia": True,
-            },
-        )
-
-        # PD gains randomization
-        self.events.randomize_actuator_gains = EventTerm(
-            func=mdp.randomize_actuator_gains,
-            mode="reset",
-            params={
-                "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-                "stiffness_distribution_params": (0.8, 1.2),
-                "damping_distribution_params": (0.8, 1.2),
-                "operation": "scale",
-                "distribution": "uniform",
-            },
-        )
-
-        # Actuator friction and armature randomization
-        self.events.randomize_joint_properties = EventTerm(
-            func=mdp.randomize_joint_parameters,
-            mode="reset",
-            params={
-                "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-                "friction_distribution_params": (0.0, 0.3),
-                "armature_distribution_params": (0.8, 1.2),
-                "operation": "scale",
-                "distribution": "uniform",
-            },
-        )
 
         # Joint initialization randomization
         # Reset by offset is needed since the default is to scale by zero
-        self.events.reset_robot_joints.params["position_range"] = (-0.2, 0.2)
-        self.events.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)
         self.events.reset_robot_joints.func = mdp.reset_joints_by_offset
 
-        self.events.push_robot.mode = "interval"
-        self.events.push_robot.interval_range_s = (5.0, 15.0)
-        self.events.push_robot.params["velocity_range"] = {
-            "x": (-0.01, 0.01),
-            "y": (-0.01, 0.01),
-        }
 
         # Base reset randomization
+
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "velocity_range": {
-                "x": (-0.3, 0.3),
-                "y": (-0.3, 0.3),
-                "z": (-0.1, 0.1),
-                "roll": (-0.2, 0.2),
-                "pitch": (-0.2, 0.2),
-                "yaw": (-0.2, 0.2),
+                "x": (0.0, 0.0),
+                "y": (0.0, 0.0),
+                "z": (0.0, 0.0),
+                "roll": (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw": (0.0, 0.0),
             },
         }
-
         # IMU offset pos and rot randomization
-        self.events.randomize_imu_mount = EventTerm(
-            func=randomize_imu_mount,
-            mode="reset",
-            params={
-                "sensor_cfg": SceneEntityCfg("imu"),
-                "pos_range": {
-                    "x": (-0.05, 0.05),
-                    "y": (-0.05, 0.05),
-                    "z": (-0.05, 0.05),
-                },
-                "rot_range": {
-                    "roll": (-0.1, 0.1),
-                    "pitch": (-0.1, 0.1),
-                    "yaw": (-0.1, 0.1),
-                },
-            },
-        )
 
         # I think this is because the "base" is not a rigid body in the robot asset
         self.events.add_base_mass = None
@@ -896,60 +950,11 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "PRT0001",
         ]
 
-        # Apply randomization settings based on flag
-        if not self.enable_randomization:
-            self._disable_randomization()
-
-    def _disable_randomization(self):
-        """Disable all randomization for easy early training."""
-        
-        print("[INFO]: Disabling all domain randomization!\n" * 5, end="")
-
-        # Disable events
-        self.events.physics_material = None
-        self.events.add_limb_masses = None
-        self.events.randomize_actuator_gains = None
-        self.events.randomize_joint_properties = None
-        self.events.randomize_imu_mount = None
-
-        # Simple resets
-        self.events.reset_robot_joints.params.update(
-            {"position_range": (1.0, 1.0), "velocity_range": (0.0, 0.0)}
-        )
-        self.events.reset_robot_joints.func = mdp.reset_joints_by_scale
-        self.events.reset_base.params = {
-            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-            "velocity_range": {
-                "x": (0.0, 0.0),
-                "y": (0.0, 0.0),
-                "z": (0.0, 0.0),
-                "roll": (0.0, 0.0),
-                "pitch": (0.0, 0.0),
-                "yaw": (0.0, 0.0),
-            },
-        }
-
-        # No pushes and push curriculum
-        self.events.push_robot = None
-        if hasattr(self.curriculum, "velocity_push_curriculum"):
-            self.curriculum.velocity_push_curriculum = None
-
-        # No actor observation noise
-        self.observations.policy.enable_corruption = False
-
-        # No foot impact penalty
-        if hasattr(self.rewards, "foot_impact_penalty"):
-            self.rewards.foot_impact_penalty = None
-
-        # Remove actuator latency
         for act_cfg in self.scene.robot.actuators.values():
             if hasattr(act_cfg, "min_delay"):
                 act_cfg.min_delay = 0
             if hasattr(act_cfg, "max_delay"):
                 act_cfg.max_delay = 0
-                
-
-
 
 @configclass
 class KBotRoughEnvCfg_PLAY(KBotRoughEnvCfg):
