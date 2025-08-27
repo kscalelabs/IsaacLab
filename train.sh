@@ -1,0 +1,1 @@
+./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py --task Isaac-Velocity-Rough-Kbot-RNN-v0 --headless
