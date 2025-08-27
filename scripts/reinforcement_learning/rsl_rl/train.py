@@ -93,6 +93,7 @@ from isaaclab.utils.assets import retrieve_file_path
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
+from pathlib import Path
 
 # PLACEHOLDER: Extension template (do not remove this comment)
 
@@ -138,6 +139,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if agent_cfg.run_name:
         log_dir += f"_{agent_cfg.run_name}"
     log_dir = os.path.join(log_root_path, log_dir)
+    git_dir = Path(log_dir) / 'git'
+    git_dir.mkdir(parents=True, exist_ok=True)
+    command = 'git log --oneline -1'
+    # run command and pipe to git_dir
+    os.system(f"cd {git_dir} && {command} > commit.txt")
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
