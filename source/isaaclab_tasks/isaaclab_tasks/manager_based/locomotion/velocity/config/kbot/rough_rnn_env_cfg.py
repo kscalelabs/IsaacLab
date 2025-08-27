@@ -369,7 +369,7 @@ class KBotRewards(RewardsCfg):
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+                body_names=["LFootBushing_GPF_1517_12", "RFootBushing_GPF_1517_12"],
             ),
             "threshold": 0.4,
         },
@@ -380,10 +380,10 @@ class KBotRewards(RewardsCfg):
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+                body_names=["LFootBushing_GPF_1517_12", "RFootBushing_GPF_1517_12"],
             ),
             "asset_cfg": SceneEntityCfg(
-                "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+                "robot", body_names=["LFootBushing_GPF_1517_12", "RFootBushing_GPF_1517_12"]
             ),
         },
     )
@@ -396,7 +396,7 @@ class KBotRewards(RewardsCfg):
             "std": 0.05,
             "tanh_mult": 2.0,
             "asset_cfg": SceneEntityCfg(
-                "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+                "robot", body_names=["LFootBushing_GPF_1517_12", "RFootBushing_GPF_1517_12"]
             ),
         },
     )
@@ -493,7 +493,7 @@ class KBotRewards(RewardsCfg):
             "threshold": 360.0,
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+                body_names=["LFootBushing_GPF_1517_12", "RFootBushing_GPF_1517_12"],
             ),
         },
     )
@@ -505,8 +505,8 @@ class KBotRewards(RewardsCfg):
         params={
             "min_distance": 0.25, # Manually measured distance between feet
             "asset_cfg": SceneEntityCfg("robot"),
-            "body_a_names": ["KB_D_501L_L_LEG_FOOT"],
-            "body_b_names": ["KB_D_501R_R_LEG_FOOT"],
+            "body_a_names": ["LFootBushing_GPF_1517_12"],
+            "body_b_names": ["RFootBushing_GPF_1517_12"],
         },
     )
 
@@ -571,7 +571,7 @@ class KBotObservations:
             scale=0.01,
             params={
                 "asset_cfg": SceneEntityCfg(
-                    "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+                    "robot", body_names=["LFootBushing_GPF_1517_12", "RFootBushing_GPF_1517_12"]
                 )
             },
         )
@@ -582,7 +582,7 @@ class KBotObservations:
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot",
-                    body_names=["base", "KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"],
+                    body_names=["base", "LFootBushing_GPF_1517_12", "RFootBushing_GPF_1517_12"],
                 )
             },
             noise=Unoise(n_min=-0.0001, n_max=0.0001),
@@ -706,7 +706,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             mode="reset",
             params={
                 "asset_cfg": SceneEntityCfg(
-                    "robot", body_names=["KB_D_501L_L_LEG_FOOT", "KB_D_501R_R_LEG_FOOT"]
+                    "robot", body_names=["LFootBushing_GPF_1517_12", "RFootBushing_GPF_1517_12"]
                 ),
                 "static_friction_range": (0.1, 2.0),
                 "dynamic_friction_range": (0.1, 2.0),
@@ -724,27 +724,27 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "asset_cfg": SceneEntityCfg(
                     "robot",
                     body_names=[
-                        "Torso_Side_Right",
-                        "KC_D_102L_L_Hip_Yoke_Drive",
-                        "KC_C_104L_PitchHardstopDriven",
-                        "KC_D_102R_R_Hip_Yoke_Drive",
-                        "KC_C_104R_PitchHardstopDriven",
-                        "RS03_5",
-                        "RS03_6",
+                        "KD_B_102B_TORSO_BTM",
+                        "KD_D_102L_L_Hip_Yoke_Drive",
+                        "KD_C_101L_ShldYokeDrive",
+                        "KD_D_102R",
+                        "KC_C_101R_ShldYokeDrive",
+                        "L_Hip_Roll_RS03",
+                        "L_Hip_Roll_RS03_2",
                         "RS03_4",
                         "RS03_3",
-                        "KC_D_301L_L_Femur_Lower_Drive",
-                        "KC_C_202L",
-                        "KC_D_301R_R_Femur_Lower_Drive",
+                        "KD_D_301L_L_Femur_Lower_Drive",
+                        "KD_C_301L_LowerBicepDrive",
+                        "KD_D_301R",
                         "KC_C_202R",
-                        "KC_D_401L_L_Shin_Drive",
-                        "KC_C_401L_L_UpForearmDrive",
-                        "KC_D_401R_R_Shin_Drive",
+                        "KD_D_401L_L_Shin_Drive",
+                        "KC_C_401L_Up_Forearm_Drive",
+                        "KD_D_401R",
                         "KC_C_401R_R_UpForearmDrive",
-                        "KB_D_501L_L_LEG_FOOT",
-                        "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
-                        "KB_D_501R_R_LEG_FOOT",
-                        "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+                        "LFootBushing_GPF_1517_12",
+                        "PRT0001_2",
+                        "RFootBushing_GPF_1517_12",
+                        "PRT0001",
                     ],
                 ),
                 "mass_distribution_params": (0.8, 1.2),
@@ -827,7 +827,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # I think this is because the "base" is not a rigid body in the robot asset
         self.events.add_base_mass = None
-        self.events.base_com.params["asset_cfg"] = SceneEntityCfg("robot", body_names="Torso_Side_Right")
+        self.events.base_com.params["asset_cfg"] = SceneEntityCfg("robot", body_names="KD_B_102B_TORSO_BTM")
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
@@ -876,24 +876,24 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = [
             "base",
-            "KC_D_102L_L_Hip_Yoke_Drive",
-            "RS03_5",
-            "KC_D_301L_L_Femur_Lower_Drive",
-            "KC_D_401L_L_Shin_Drive",
-            "KC_C_104L_PitchHardstopDriven",
-            "RS03_6",
-            "KC_C_202L",
-            "KC_C_401L_L_UpForearmDrive",
-            "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop",
-            "KC_D_102R_R_Hip_Yoke_Drive",
+            "KD_D_102L_L_Hip_Yoke_Drive",
+            "L_Hip_Roll_RS03",
+            "KD_D_301L_L_Femur_Lower_Drive",
+            "KD_D_401L_L_Shin_Drive",
+            "KD_C_101L_ShldYokeDrive",
+            "L_Hip_Roll_RS03_2",
+            "KD_C_301L_LowerBicepDrive",
+            "KC_C_401L_Up_Forearm_Drive",
+            "PRT0001_2",
+            "KD_D_102R",
             "RS03_4",
-            "KC_D_301R_R_Femur_Lower_Drive",
-            "KC_D_401R_R_Shin_Drive",
-            "KC_C_104R_PitchHardstopDriven",
+            "KD_D_301R",
+            "KD_D_401R",
+            "KC_C_101R_ShldYokeDrive",
             "RS03_3",
             "KC_C_202R",
             "KC_C_401R_R_UpForearmDrive",
-            "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop",
+            "PRT0001",
         ]
 
         # Apply randomization settings based on flag
