@@ -323,11 +323,8 @@ def velocity_push_curriculum(
         "push_velocity_magnitude": current_velocity,
     }
 
-def configure_randomization(env: LocomotionVelocityRoughEnvCfg):
-    if not hasattr(env, "events"): # IDK why it calls this with an object that doesn't have this property.
-        print("WARNING: skipping randomization configuration due to weird missing parameter problem")
-        return
-    env.events.physics_material = EventTerm(
+def configure_randomization(env: ManagerBasedRLEnv):
+    env.event_manager.cfg.physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
         mode="reset",
         params={
@@ -343,7 +340,7 @@ def configure_randomization(env: LocomotionVelocityRoughEnvCfg):
     )
 
     # Individual link mass randomization for robustness
-    env.events.add_limb_masses = EventTerm(
+    env.event_manager.cfg.add_limb_masses = EventTerm(
         func=mdp.randomize_rigid_body_mass,
         mode="reset",
         params={
@@ -381,7 +378,7 @@ def configure_randomization(env: LocomotionVelocityRoughEnvCfg):
     )
 
     # PD gains randomization
-    env.events.randomize_actuator_gains = EventTerm(
+    env.event_manager.cfg.randomize_actuator_gains = EventTerm(
         func=mdp.randomize_actuator_gains,
         mode="reset",
         params={
@@ -394,7 +391,7 @@ def configure_randomization(env: LocomotionVelocityRoughEnvCfg):
     )
 
     # Actuator friction and armature randomization
-    env.events.randomize_joint_properties = EventTerm(
+    env.event_manager.cfg.randomize_joint_properties = EventTerm(
         func=mdp.randomize_joint_parameters,
         mode="reset",
         params={
@@ -406,7 +403,7 @@ def configure_randomization(env: LocomotionVelocityRoughEnvCfg):
         },
     )
 
-    env.events.randomize_imu_mount = EventTerm(
+    env.event_manager.cfg.randomize_imu_mount = EventTerm(
         func=randomize_imu_mount,
         mode="reset",
         params={
@@ -424,10 +421,10 @@ def configure_randomization(env: LocomotionVelocityRoughEnvCfg):
         },
     )
 
-    env.events.reset_robot_joints.params["position_range"] = (-0.2, 0.2)
-    env.events.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)
+    env.event_manager.cfg.reset_robot_joints.params["position_range"] = (-0.2, 0.2)
+    env.event_manager.cfg.reset_robot_joints.params["velocity_range"] = (-1.0, 1.0)
 
-    env.events.reset_base.params = {
+    env.event_manager.cfg.reset_base.params = {
         "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
         "velocity_range": {
             "x": (-0.3, 0.3),
@@ -439,15 +436,15 @@ def configure_randomization(env: LocomotionVelocityRoughEnvCfg):
         },
     }
 
-    env.events.push_robot.mode = "interval"
-    env.events.push_robot.interval_range_s = (5.0, 15.0)
-    env.events.push_robot.params["velocity_range"] = {
+    env.event_manager.cfg.push_robot.mode = "interval"
+    env.event_manager.cfg.push_robot.interval_range_s = (5.0, 15.0)
+    env.event_manager.cfg.push_robot.params["velocity_range"] = {
         "x": (-0.01, 0.01),
         "y": (-0.01, 0.01),
     }
-    env.observations.policy.enable_corruption = True
+    env.observation_manager.cfg.policy.enable_corruption = True
 
-    for act_cfg in env.scene.robot.actuators.values():
+    for act_cfg in env.scene.cfg.robot.actuators.values():
         if hasattr(act_cfg, "min_delay"):
             act_cfg.min_delay = 0
         if hasattr(act_cfg, "max_delay"):
@@ -816,7 +813,7 @@ class KBotCurriculumCfg:
     domain_randomize_curriculum = CurrTerm(
         func=domain_randomization_curriculum,
         params={
-            "curriculum_start_step": 6000,
+            "curriculum_start_step": 10,
             "curriculum_stop_step": 6000+132000,
         }
     )
