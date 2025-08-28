@@ -462,9 +462,9 @@ def configure_randomization(env: ManagerBasedRLEnv):
                 "z": (-10.0, 10.0),
             },
             "torque_range": {
-                "x": (-1.0, 1.0),
-                "y": (-1.0, 1.0),
-                "z": (-1.0, 1.0),
+                "x": (-5.0, 5.0),
+                "y": (-5.0, 5.0),
+                "z": (-5.0, 5.0),
             },
         },
     )
