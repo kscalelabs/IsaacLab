@@ -223,3 +223,6 @@ class KBotManipRoughEnvCfgPlay(KBotManipRoughEnvCfg):
 
         # Disable domain randomization for play mode
         self.curriculum.domain_randomize_curriculum = None
+        self.commands.base_velocity.debug_vis = False
+        self.commands.left_ee_pose.debug_vis = False
+        self.commands.right_ee_pose.debug_vis = False
