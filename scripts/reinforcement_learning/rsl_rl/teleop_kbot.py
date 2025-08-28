@@ -86,6 +86,10 @@ def main() -> None:
     Returns:
         None
     """
+    # sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    # sock.bind(("0.0.0.0", 1234))
 
     if args_cli.checkpoint:
         resume_path = retrieve_file_path(args_cli.checkpoint)
@@ -127,6 +131,16 @@ def main() -> None:
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
+
+            # data, addr = sock.recvfrom(512)
+            # message = data.decode("utf-8")
+            # command_data: dict = json.loads(message)
+
+            command = torch.zeros(17)
+            # command[0:3] = command_data.get('velocity', [0.0, 0.0, 0.0])
+            # command[3:10] = command_data.get('right_ee', [0.0]*7)
+            # command[10:17] = command_data.get('left_ee', [0.0]*7)
+            obs[-17:] = command
             actions = policy(obs)
             frame = env.env.render()
             ffmpeg_process.stdin.write(frame.astype(np.uint8).tobytes())
