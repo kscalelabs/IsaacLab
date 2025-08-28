@@ -67,6 +67,8 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import TiledCameraCfg
 import cv2
 import subprocess
+import socket
+import json
 
 def open_ffmpeg_stream_process():
     args = (
@@ -89,7 +91,7 @@ def main() -> None:
     # sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     # sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    # sock.bind(("0.0.0.0", 1234))
+    # sock.bind(("0.0.0.0", 8888))
 
     if args_cli.checkpoint:
         resume_path = retrieve_file_path(args_cli.checkpoint)
@@ -105,12 +107,6 @@ def main() -> None:
     ppo_runner.load(resume_path)
 
 
-    # Monkeypatch env to have camera
-    # env.env.cfg.scene.tiled_camera = TiledCameraCfg(
-    #     prim_path="/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera",
-    #     data_types=["rgb"],
-    # )
-    # env.env.cfg.observations.policy.image = ObsTerm(func=mdp.image, params={"sensor_cfg": SceneEntityCfg("tiled_camera"), "data_type": "rgb"})
     # obtain the trained policy for inference
     policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
 
@@ -138,18 +134,19 @@ def main() -> None:
 
             # set reasonable wrist targets
             # observations go left, right (positive y, negative y)
-            obs[:, -14:-7] = torch.Tensor([ # xyz, quat
-                [0.2, 0.1, 0.1, 1.0, 0, 0, 0]
-            ])
-            obs[:, -7:] =  torch.Tensor([ # xyz, quat
-                [0.2, -0.1, 0.1, 1.0, 0, 0, 0]
-            ])
-            obs[:,9:12] = torch.zeros(3) # velocity command
+            # obs[:, -14:-7] = torch.Tensor([ # xyz, quat
+            #     [0.2, 0.1, 0.1, 1.0, 0, 0, 0]
+            # ])
+            # obs[:, -7:] =  torch.Tensor([ # xyz, quat
+            #     [0.2, -0.1, 0.1, 1.0, 0, 0, 0]
+            # ])
+            # obs[:,9:12] = torch.zeros(3) # velocity command
             # command[0:3] = command_data.get('velocity', [0.0, 0.0, 0.0])
             # command[3:10] = command_data.get('right_ee', [0.0]*7)
             # command[10:17] = command_data.get('left_ee', [0.0]*7)
             # obs[:, 40:40+17] = command
             actions = policy(obs)
+            # actions[:, 5:10] = torch.deg2rad(torch.Tensor([command_data['joints'][k] for k in ['21', '22', '23', '24', '25']]))
             frame = env.env.render()
             ffmpeg_process.stdin.write(frame.astype(np.uint8).tobytes())
             # env stepping
