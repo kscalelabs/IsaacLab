@@ -1,11 +1,6 @@
 # scripts/reinforcement_learning/rsl_rl/export.py
 #
 # Export a trained rsl_rl policy as Kinfer binary.
-# 
-# MODIFIED: This export script now accepts 16-dimensional command vectors from the deployment
-# platform but only uses the first 3 dimensions (lin_vel_x, lin_vel_y, ang_vel_z) that the
-# original model was trained on. The remaining 13 dimensions are ignored.
-#
 # Example usage: python scripts/reinforcement_learning/rsl_rl/export.py --task=Isaac-Velocity-Rough-Kbot-v0 --checkpoint ~/Github/IsaacLab/logs/rsl_rl/kbot_rough/[path_to_checkpoint].pt
 # Or you can omit the checkpoint arg and it will use the latest checkpoint in the logs/rsl_rl/agent_name/ directory
 import argparse
@@ -242,12 +237,7 @@ def main():
     command_tensor = torch.cat([command_manager.get_command(name) for name in command_term_names], dim=-1)
     command_tensor = command_tensor.to("cpu").flatten()
 
-    # Original model expects 3D commands (lin_vel_x, lin_vel_y, ang_vel_z)
-    # But deployment platform provides 16D commands - we only use first 3
-    MODEL_NUM_COMMANDS = command_tensor.shape[0]  # This is 3 for the original model
-    PLATFORM_NUM_COMMANDS = 16  # Platform provides 16D commands
-    
-    print(f"[INFO] Model expects {MODEL_NUM_COMMANDS} command dimensions, but deployment platform provides {PLATFORM_NUM_COMMANDS} dimensions.")
+    NUM_COMMANDS = command_tensor.shape[0]
     
     def construct_obs_rnn(
         projected_gravity: torch.Tensor,
@@ -257,18 +247,12 @@ def main():
         gyroscope: torch.Tensor,
         carry: torch.Tensor,
     ) -> torch.Tensor:
-        # Extract only the first 3 dimensions from the 16D command vector
-        # [0] x linear velocity [m/s]
-        # [1] y linear velocity [m/s] 
-        # [2] z angular velocity [rad/s]
-        model_command = command[:MODEL_NUM_COMMANDS]
-        
         offset_joint_angles = joint_angles - _INIT_JOINT_POS
         scaled_projected_gravity = projected_gravity / 9.81
         obs = torch.cat(
             (
                 scaled_projected_gravity,
-                model_command,
+                command,
                 offset_joint_angles,
                 joint_angular_velocities,
                 gyroscope,
@@ -317,7 +301,7 @@ def main():
         torch.zeros(3),
         torch.zeros(NUM_JOINTS),
         torch.zeros(NUM_JOINTS),
-        torch.zeros(PLATFORM_NUM_COMMANDS),  # Use 16D command vector
+        torch.zeros(NUM_COMMANDS),
         torch.zeros(3),
         torch.zeros(*CARRY_SHAPE),
     )
@@ -328,7 +312,7 @@ def main():
     joint_names = list(env.unwrapped.scene["robot"].data.joint_names)
     metadata = PyModelMetadata(
         joint_names=joint_names,
-        num_commands=PLATFORM_NUM_COMMANDS,  # Use 16D command vector size
+        num_commands=NUM_COMMANDS,
         carry_size=list(CARRY_SHAPE),
     )
 
