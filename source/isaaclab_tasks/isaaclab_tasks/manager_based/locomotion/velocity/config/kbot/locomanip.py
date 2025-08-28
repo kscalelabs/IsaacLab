@@ -12,6 +12,9 @@ from isaaclab.utils import configclass
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 import isaaclab_tasks.manager_based.manipulation.reach.mdp as manipulation_mdp
 
+from isaaclab.assets import RigidObjectCfg
+import numpy as np
+
 LEFT_WRIST_NAME = "PRT0001_2"
 RIGHT_WRIST_NAME = "PRT0001"
 
@@ -226,3 +229,7 @@ class KBotManipRoughEnvCfgPlay(KBotManipRoughEnvCfg):
         self.commands.base_velocity.debug_vis = False
         self.commands.left_ee_pose.debug_vis = False
         self.commands.right_ee_pose.debug_vis = False
+
+        # self.scene.robot.init_state.pos =  np.array([0, 0, 0.6])
+        # for k in self.scene.robot.init_state.joint_pos.keys():
+        #     self.scene.robot.init_state.joint_pos[k] = 0.0
