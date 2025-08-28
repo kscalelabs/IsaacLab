@@ -102,11 +102,11 @@ def main() -> None:
 
 
     # Monkeypatch env to have camera
-    env.env.cfg.scene.tiled_camera = TiledCameraCfg(
-        prim_path="{ENV_REGEX_NS}/KD_B_102B_TORSO_BTM/Camera",
-        data_types=["rgb"],
-    )
-    env.env.cfg.observations.policy.image = ObsTerm(func=mdp.image, params={"sensor_cfg": SceneEntityCfg("tiled_camera"), "data_type": "rgb"})
+    # env.env.cfg.scene.tiled_camera = TiledCameraCfg(
+    #     prim_path="/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera",
+    #     data_types=["rgb"],
+    # )
+    # env.env.cfg.observations.policy.image = ObsTerm(func=mdp.image, params={"sensor_cfg": SceneEntityCfg("tiled_camera"), "data_type": "rgb"})
     # obtain the trained policy for inference
     policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
 
@@ -121,6 +121,7 @@ def main() -> None:
     # simulate environment
 
     ffmpeg_process = open_ffmpeg_stream_process()
+    env.env.cfg.viewer.cam_prim_path = "/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera"
     while simulation_app.is_running():
         start_time = time.time()
         # run everything in inference mode
