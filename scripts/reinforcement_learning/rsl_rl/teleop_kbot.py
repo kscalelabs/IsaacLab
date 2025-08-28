@@ -137,10 +137,17 @@ def main() -> None:
             # command_data: dict = json.loads(message)
 
             command = torch.zeros(17)
+            # set reasonable wrist targets
+            command[3:10] = torch.Tensor([ # xyz, quat
+                [0.2, -0.1, 0, 1.0, 0, 0, 0]
+            ])
+            command[10:17] =  torch.Tensor([ # xyz, quat
+                [0.2, 0.1, 0, 1.0, 0, 0, 0]
+            ])
             # command[0:3] = command_data.get('velocity', [0.0, 0.0, 0.0])
             # command[3:10] = command_data.get('right_ee', [0.0]*7)
             # command[10:17] = command_data.get('left_ee', [0.0]*7)
-            obs[-17:] = command
+            obs[:, -17:] = command
             actions = policy(obs)
             frame = env.env.render()
             ffmpeg_process.stdin.write(frame.astype(np.uint8).tobytes())
