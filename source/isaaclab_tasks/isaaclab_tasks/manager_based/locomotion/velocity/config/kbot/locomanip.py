@@ -12,8 +12,8 @@ from isaaclab.utils import configclass
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 import isaaclab_tasks.manager_based.manipulation.reach.mdp as manipulation_mdp
 
-LEFT_WRIST_NAME = "KB_C_501X_Left_Bayonet_Adapter_Hard_Stop"
-RIGHT_WRIST_NAME = "KB_C_501X_Right_Bayonet_Adapter_Hard_Stop"
+LEFT_WRIST_NAME = "PRT0001_2"
+RIGHT_WRIST_NAME = "PRT0001"
 
 @configclass
 class KBotLocoManipRewards(KBotRewards):
