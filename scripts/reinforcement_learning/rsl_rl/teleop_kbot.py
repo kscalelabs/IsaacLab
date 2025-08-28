@@ -66,6 +66,15 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import TiledCameraCfg
 import cv2
+import subprocess
+
+def open_ffmpeg_stream_process():
+    args = (
+        "ffmpeg -re -stream_loop -1 -f rawvideo -pix_fmt "
+        "rgb24 -s 1280x720 -i pipe:0 -pix_fmt yuv420p "
+        "-f mpegts udp://127.0.0.1:8554"
+    ).split()
+    return subprocess.Popen(args, stdin=subprocess.PIPE)
 
 def main() -> None:
     """
@@ -110,6 +119,8 @@ def main() -> None:
     obs, _ = env.get_observations()
     timestep = 0
     # simulate environment
+
+    ffmpeg_process = open_ffmpeg_stream_process()
     while simulation_app.is_running():
         start_time = time.time()
         # run everything in inference mode
@@ -117,8 +128,7 @@ def main() -> None:
             # agent stepping
             actions = policy(obs)
             frame = env.env.render()
-            cv2.imshow('frame', np.array(frame)) #TODO: fix the crashing here because isaacsim opencv is built with no gui support
-            cv2.waitKey(1)
+            ffmpeg_process.stdin.write(frame.astype(np.uint8).tobytes())
             # env stepping
             obs, _, _, _ = env.step(actions)
 
@@ -140,3 +150,38 @@ if __name__ == "__main__":
     main()
     # close sim app
     simulation_app.close()
+
+'''
+#Example video client
+import threading
+import queue
+import cv2
+
+q = queue.Queue()
+
+def receive():
+    cap = cv2.VideoCapture('udp://@127.0.0.1:8554?buffer_size=65535&pkt_size=65535&fifo_size=65535')
+    ret, frame = cap.read()
+    q.put(frame)
+    while ret:
+        ret, frame = cap.read()
+        q.put(frame)
+
+def display():
+    while True:
+        if q.empty() != True:
+            frame = q.get()
+            cv2.imshow('Video', frame)
+
+        k = cv2.waitKey(1) & 0xff
+        if k == 27:  # press 'ESC' to quit
+            break
+
+tr = threading.Thread(target=receive, daemon=True)
+td = threading.Thread(target=display)
+
+tr.start()
+td.start()
+
+td.join()
+'''
