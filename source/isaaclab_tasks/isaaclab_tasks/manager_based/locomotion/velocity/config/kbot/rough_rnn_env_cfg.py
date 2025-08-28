@@ -813,7 +813,7 @@ class KBotCurriculumCfg:
     domain_randomize_curriculum = CurrTerm(
         func=domain_randomization_curriculum,
         params={
-            "curriculum_start_step": 10,
+            "curriculum_start_step": 6000,
             "curriculum_stop_step": 6000+132000,
         }
     )
