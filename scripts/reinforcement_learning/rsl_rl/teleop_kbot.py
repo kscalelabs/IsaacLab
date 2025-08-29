@@ -177,6 +177,8 @@ def main() -> None:
             actions[:, (7, 15)] -= 2*torch.deg2rad(torch.Tensor([-10, 90]).to(device=actions.device))
 
             actions[:, (1, 5, 9, 13, 17)] = torch.deg2rad(2*torch.Tensor([command_data['joints'][k] for k in ['11', '12', '13', '14', '15']]).to(device=actions.device))
+            actions[:,13] = -actions[:,13]
+            actions[:,1] = -actions[:,1]
             actions[:, (5, 13)] -= 2*torch.deg2rad(torch.Tensor([10, -90]).to(device=actions.device))
 
             # actions[:, 7] -= np.deg2rad(-10)
