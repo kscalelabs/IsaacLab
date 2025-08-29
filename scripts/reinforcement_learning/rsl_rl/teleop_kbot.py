@@ -85,7 +85,12 @@ command_data = {
         '22': 0.0,
         '23': 0.0,
         '24': 0.0,
-        '25': 0.0
+        '25': 0.0,
+        '11': 0.0,
+        '12': 0.0,
+        '13': 0.0,
+        '14': 0.0,
+        '15': 0.0
     }
 }
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -162,7 +167,22 @@ def main() -> None:
             # command[10:17] = command_data.get('left_ee', [0.0]*7)
             # obs[:, 40:40+17] = command
             actions = policy(obs)
-            actions[:, (3,7,11,15,19)] = torch.deg2rad(torch.Tensor([command_data['joints'][k] for k in ['21', '22', '23', '24', '25']]).to(device=actions.device))
+            # command_data has absolute angles, but gym environment wants them relative to starting positions
+            # "dof_right_shoulder_pitch_03": 0.0,
+            # "dof_right_shoulder_roll_03": math.radians(-10.0),
+            # "dof_right_shoulder_yaw_02": 0.0,
+            # "dof_right_elbow_02": math.radians(90.0),
+            # "dof_right_wrist_00": 0.0,
+            command_data['joints']['24'] -= 90
+            command_data['joints']['22'] -= 10
+            command_data['joints']['14'] -= 90
+            command_data['joints']['12'] -= 10
+            actions[:, (3,7,11,15,19)] = torch.deg2rad(2*torch.Tensor([command_data['joints'][k] for k in ['21', '22', '23', '24', '25']]).to(device=actions.device))
+
+            actions[:, (1, 5, 9, 13, 17)] = torch.deg2rad(2*torch.Tensor([command_data['joints'][k] for k in ['11', '12', '13', '14', '15']]).to(device=actions.device))
+
+            # actions[:, 7] -= np.deg2rad(-10)
+            # actions[: 15] -= np.deg2rad(90)
             frame = env.env.render()
             ffmpeg_process.stdin.write(frame.astype(np.uint8).tobytes())
             # env stepping
