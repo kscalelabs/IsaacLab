@@ -173,13 +173,11 @@ def main() -> None:
             # "dof_right_shoulder_yaw_02": 0.0,
             # "dof_right_elbow_02": math.radians(90.0),
             # "dof_right_wrist_00": 0.0,
-            command_data['joints']['24'] -= 90
-            command_data['joints']['22'] -= 10
-            command_data['joints']['14'] -= 90
-            command_data['joints']['12'] -= 10
             actions[:, (3,7,11,15,19)] = torch.deg2rad(2*torch.Tensor([command_data['joints'][k] for k in ['21', '22', '23', '24', '25']]).to(device=actions.device))
+            actions[:, (7, 15)] -= 2*torch.deg2rad(torch.Tensor([-10, 90]).to(device=actions.device))
 
             actions[:, (1, 5, 9, 13, 17)] = torch.deg2rad(2*torch.Tensor([command_data['joints'][k] for k in ['11', '12', '13', '14', '15']]).to(device=actions.device))
+            actions[:, (5, 13)] -= 2*torch.deg2rad(torch.Tensor([10, -90]).to(device=actions.device))
 
             # actions[:, 7] -= np.deg2rad(-10)
             # actions[: 15] -= np.deg2rad(90)
