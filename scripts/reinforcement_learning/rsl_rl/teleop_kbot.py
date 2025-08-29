@@ -69,6 +69,7 @@ import cv2
 import subprocess
 import socket
 import json
+import threading
 
 def open_ffmpeg_stream_process():
     args = (
@@ -78,7 +79,29 @@ def open_ffmpeg_stream_process():
     ).split()
     return subprocess.Popen(args, stdin=subprocess.PIPE)
 
+command_data = {
+    'joints': {
+        '21': 0.0,
+        '22': 0.0,
+        '23': 0.0,
+        '24': 0.0,
+        '25': 0.0
+    }
+}
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+sock.bind(("0.0.0.0", 8888))
+
+def update_data_thread():
+    global command_data
+    while True:
+        data, addr = sock.recvfrom(512)
+        message = data.decode("utf-8")
+        command_data.update(json.loads(message))
+
 def main() -> None:
+    global command_data
     """
     Run keyboard teleoperation with Isaac Lab manipulation environment.
 
@@ -88,10 +111,7 @@ def main() -> None:
     Returns:
         None
     """
-    # sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    # sock.bind(("0.0.0.0", 8888))
+    threading.Thread(target=update_data_thread, daemon=True).start()
 
     if args_cli.checkpoint:
         resume_path = retrieve_file_path(args_cli.checkpoint)
@@ -128,10 +148,6 @@ def main() -> None:
         with torch.inference_mode():
             # agent stepping
 
-            # data, addr = sock.recvfrom(512)
-            # message = data.decode("utf-8")
-            # command_data: dict = json.loads(message)
-
             # set reasonable wrist targets
             # observations go left, right (positive y, negative y)
             # obs[:, -14:-7] = torch.Tensor([ # xyz, quat
@@ -146,7 +162,7 @@ def main() -> None:
             # command[10:17] = command_data.get('left_ee', [0.0]*7)
             # obs[:, 40:40+17] = command
             actions = policy(obs)
-            # actions[:, 5:10] = torch.deg2rad(torch.Tensor([command_data['joints'][k] for k in ['21', '22', '23', '24', '25']]))
+            actions[:, (3,7,11,15,19)] = torch.deg2rad(torch.Tensor([command_data['joints'][k] for k in ['21', '22', '23', '24', '25']]).to(device=actions.device))
             frame = env.env.render()
             ffmpeg_process.stdin.write(frame.astype(np.uint8).tobytes())
             # env stepping
