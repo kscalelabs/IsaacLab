@@ -79,6 +79,17 @@ def open_ffmpeg_stream_process():
     ).split()
     return subprocess.Popen(args, stdin=subprocess.PIPE)
 
+# Alternative with higher quality settings
+def open_ffmpeg_stream_process_high_quality():
+    args = (
+        "ffmpeg -re -stream_loop -1 -f rawvideo -pix_fmt "
+        "rgb24 -s 1280x720 -i pipe:0 -c:v libx264 -preset slow "
+        "-crf 20 -pix_fmt yuv420p -b:v 3M -maxrate 4M -bufsize 8M "
+        "-profile:v high -level 4.1 -g 60 -keyint_min 30 "
+        "-f mpegts udp://127.0.0.1:8554"
+    ).split()
+    return subprocess.Popen(args, stdin=subprocess.PIPE)
+
 command_data = {
     'joints': {
         '21': 0.0,
