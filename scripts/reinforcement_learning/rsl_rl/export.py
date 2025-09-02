@@ -308,7 +308,11 @@ def main():
 
         actions, new_carry = ts_policy(obs, carry)
         
-        return (actions * ACTION_SCALE) + _INIT_JOINT_POS, new_carry
+        actions_scaled = (actions * ACTION_SCALE) + _INIT_JOINT_POS
+        actions_scaled[:10] = command[6:] # TODO: check if indexing is right because idk which one is the torso height command and idk which actions are the arms
+        actions_scaled[10:] = 0
+        
+        return actions_scaled, new_carry
     
     def _init_fn() -> torch.Tensor:
         return exporter.get_initial_carry(NUM_JOINTS)
