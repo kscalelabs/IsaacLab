@@ -353,6 +353,22 @@ def main():
         f.write(kinfer_blob)
 
     print(f"[OK] Export completed → {output_path}")
+    
+    # Also save individual ONNX files
+    init_onnx_filename = f"{run_timestamp}_{model_name}_init.onnx"
+    step_onnx_filename = f"{run_timestamp}_{model_name}_step.onnx"
+    init_onnx_path = checkpoint_path_obj.parent / init_onnx_filename
+    step_onnx_path = checkpoint_path_obj.parent / step_onnx_filename
+    
+    with open(init_onnx_path, "wb") as f:
+        f.write(init_onnx.SerializeToString())
+    
+    with open(step_onnx_path, "wb") as f:
+        f.write(step_onnx.SerializeToString())
+    
+    print(f"[OK] Individual ONNX files saved:")
+    print(f"     Init function → {init_onnx_path}")
+    print(f"     Step function → {step_onnx_path}")
 
     # Create zip file of params folder if it exists
     params_folder = checkpoint_path_obj.parent / "params"
