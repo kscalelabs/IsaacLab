@@ -223,7 +223,7 @@ def main():
 
     ts_policy = exporter
 
-    NUM_JOINTS = len(env.unwrapped.scene["robot"].data.joint_names)
+    NUM_JOINTS = 22#len(env.unwrapped.scene["robot"].data.joint_names)
     
     # Get carry shape from the exporter
     CARRY_SHAPE = exporter.get_carry_shape(NUM_JOINTS)
@@ -232,7 +232,7 @@ def main():
     action_term_name = "joint_pos"
     action_term = env.unwrapped.action_manager.get_term(action_term_name)
 
-    _INIT_JOINT_POS = action_term._offset
+    _INIT_JOINT_POS = torch.zeros(22)#action_term._offset
     _INIT_JOINT_POS = _INIT_JOINT_POS.to("cpu").squeeze(0)
     ACTION_SCALE = action_term._scale
 
@@ -245,7 +245,7 @@ def main():
     # Original model expects 3D commands (lin_vel_x, lin_vel_y, ang_vel_z)
     # But deployment platform provides 16D commands - we only use first 3
     MODEL_NUM_COMMANDS = command_tensor.shape[0]  # This is 3 for the original model
-    PLATFORM_NUM_COMMANDS = 16  # Platform provides 16D commands
+    PLATFORM_NUM_COMMANDS = 18  # Platform provides 16D commands
     
     print(f"[INFO] Model expects {MODEL_NUM_COMMANDS} command dimensions, but deployment platform provides {PLATFORM_NUM_COMMANDS} dimensions.")
     
@@ -304,15 +304,17 @@ def main():
         gyroscope: torch.Tensor,
         carry: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        obs = construct_obs(projected_gravity, joint_angles, joint_angular_velocities, command, gyroscope, carry)
+        # obs = construct_obs(projected_gravity, joint_angles, joint_angular_velocities, command, gyroscope, carry)
 
-        actions, new_carry = ts_policy(obs, carry)
+        # actions, new_carry = ts_policy(obs, carry)
         
-        actions_scaled = (actions * ACTION_SCALE) + _INIT_JOINT_POS
-        actions_scaled[:10] = command[6:] # TODO: check if indexing is right because idk which one is the torso height command and idk which actions are the arms
-        actions_scaled[10:] = 0
-        
-        return actions_scaled, new_carry
+        # actions_scaled = (actions * ACTION_SCALE) + _INIT_JOINT_POS
+        actions_scaled = torch.zeros(22)
+        actions_scaled[3:20:4] = command[6:11] # TODO: check if indexing is right because idk which one is the torso height command and idk which actions are the arms
+        actions_scaled[1:20:4] = command[13:]
+        actions_scaled[-2:] = command[11:13]
+        return actions_scaled, carry + joint_angles[0] + projected_gravity[0] + joint_angular_velocities[0] + gyroscope[0] # Hack to get all inputs to be not optimized out
+        # return actions_scaled
     
     def _init_fn() -> torch.Tensor:
         return exporter.get_initial_carry(NUM_JOINTS)
@@ -331,7 +333,7 @@ def main():
 
     joint_names = list(env.unwrapped.scene["robot"].data.joint_names)
     metadata = PyModelMetadata(
-        joint_names=joint_names,
+        joint_names=joint_names + ['dof_right_wrist_gripper_05', 'dof_left_wrist_gripper_05'],
         num_commands=PLATFORM_NUM_COMMANDS,  # Use 16D command vector size
         carry_size=list(CARRY_SHAPE),
     )
