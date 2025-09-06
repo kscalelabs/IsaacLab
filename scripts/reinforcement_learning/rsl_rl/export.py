@@ -311,8 +311,8 @@ def main():
         # actions_scaled = (actions * ACTION_SCALE) + _INIT_JOINT_POS
         actions_scaled = torch.zeros(22)
         actions_scaled[3:20:4] = command[6:11] # TODO: check if indexing is right because idk which one is the torso height command and idk which actions are the arms
-        actions_scaled[1:20:4] = command[13:]
-        actions_scaled[-2:] = command[11:13]
+        actions_scaled[1:20:4] = command[12:17]
+        actions_scaled[-2:] = torch.tensor([command[11], command[17]])
         return actions_scaled, carry + joint_angles[0] + projected_gravity[0] + joint_angular_velocities[0] + gyroscope[0] # Hack to get all inputs to be not optimized out
         # return actions_scaled
     
