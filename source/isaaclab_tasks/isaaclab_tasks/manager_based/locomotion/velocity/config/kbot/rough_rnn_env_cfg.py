@@ -724,7 +724,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "asset_cfg": SceneEntityCfg(
                     "robot",
                     body_names=[
-                        "KD_B_102B_TORSO_BTM",
+                        "KD_D_101L_L_Hip_Static",
                         "KD_D_102L_L_Hip_Yoke_Drive",
                         "KD_C_101L_ShldYokeDrive",
                         "KD_D_102R",
@@ -827,7 +827,7 @@ class KBotRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # I think this is because the "base" is not a rigid body in the robot asset
         self.events.add_base_mass = None
-        self.events.base_com.params["asset_cfg"] = SceneEntityCfg("robot", body_names="KD_B_102B_TORSO_BTM")
+        self.events.base_com.params["asset_cfg"] = SceneEntityCfg("robot", body_names="KD_D_101L_L_Hip_Static")
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
