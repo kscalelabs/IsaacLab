@@ -2,6 +2,13 @@
 
 ---
 
+# K-Scale Isaaclab Fork
+
+See the readme in the kbot folder here: 
+```
+IsaacLab/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/config/kbot/README.md
+```
+
 # Isaac Lab
 
 [![IsaacSim](https://img.shields.io/badge/IsaacSim-4.5.0-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
