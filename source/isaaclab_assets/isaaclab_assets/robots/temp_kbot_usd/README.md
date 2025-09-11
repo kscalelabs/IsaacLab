@@ -3,6 +3,9 @@
 
 For importing the kbot into Isaaclab
 
+## Note
+
+Make sure your urdf is the one with full collisions, otherwise it will fall through the floor and not train. 
 
 ## URDF Importer
 
