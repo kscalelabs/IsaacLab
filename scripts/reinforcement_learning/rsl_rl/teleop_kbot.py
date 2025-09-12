@@ -157,7 +157,8 @@ def main() -> None:
     # simulate environment
 
     ffmpeg_process = open_ffmpeg_stream_process()
-    env.env.cfg.viewer.cam_prim_path = "/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera"
+    env.env.cfg.viewer.cam_prim_path = "/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera" # Left cam
+    # env.env.cfg.viewer.cam_prim_path = "/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera_01" # Right cam
     while simulation_app.is_running():
         start_time = time.time()
         # run everything in inference mode
@@ -195,7 +196,9 @@ def main() -> None:
             # actions[:, 7] -= np.deg2rad(-10)
             # actions[: 15] -= np.deg2rad(90)
             frame = env.env.render()
-            ffmpeg_process.stdin.write(frame.astype(np.uint8).tobytes())
+            frame_uint8 = frame.astype(np.uint8)
+            cv2.imwrite("/home/miller/IsaacLab/frame.png", cv2.cvtColor(frame_uint8, cv2.COLOR_RGB2BGR))
+            ffmpeg_process.stdin.write(frame_uint8.tobytes())
             # env stepping
             obs, _, _, _ = env.step(actions)
 
