@@ -13,6 +13,7 @@ from collections.abc import Callable
 from isaaclab.app import AppLauncher
 import numpy as np
 
+
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Keyboard teleoperation for Isaac Lab environments.")
 # append AppLauncher cli args
@@ -65,6 +66,8 @@ import isaaclab_tasks.manager_based.classic.cartpole.mdp as mdp
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import TiledCameraCfg
+
+import omni.replicator.core as rep
 import cv2
 import subprocess
 import socket
@@ -157,8 +160,20 @@ def main() -> None:
     # simulate environment
 
     ffmpeg_process = open_ffmpeg_stream_process()
-    env.env.cfg.viewer.cam_prim_path = "/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera" # Left cam
-    # env.env.cfg.viewer.cam_prim_path = "/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera_01" # Right cam
+
+    left_cam_path = "/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera"
+    right_cam_path = "/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera_01"
+    resolution = env.env.cfg.viewer.resolution
+
+    # Create render products
+    render_product_left = rep.create.render_product(left_cam_path, resolution)
+    render_product_right = rep.create.render_product(right_cam_path, resolution)
+
+    # Create and attach RGB annotator
+    rgb_annotator_left = rep.AnnotatorRegistry.get_annotator("rgb", device="cpu")
+    rgb_annotator_right = rep.AnnotatorRegistry.get_annotator("rgb", device="cpu")
+    rgb_annotator_left.attach([render_product_left])
+    rgb_annotator_right.attach([render_product_right])
     while simulation_app.is_running():
         start_time = time.time()
         # run everything in inference mode
@@ -195,10 +210,21 @@ def main() -> None:
 
             # actions[:, 7] -= np.deg2rad(-10)
             # actions[: 15] -= np.deg2rad(90)
-            frame = env.env.render()
-            frame_uint8 = frame.astype(np.uint8)
-            cv2.imwrite("/home/miller/IsaacLab/frame.png", cv2.cvtColor(frame_uint8, cv2.COLOR_RGB2BGR))
-            ffmpeg_process.stdin.write(frame_uint8.tobytes())
+            rgb_data_left = rgb_annotator_left.get_data()
+            rgb_data_right = rgb_annotator_right.get_data()
+            # rgb_data shape: (2, H, W, 4) or (2, H, W, 3) depending on annotator
+            # convert to numpy array
+            rgb_data_left = np.frombuffer(rgb_data_left, dtype=np.uint8).reshape(*rgb_data_left.shape)
+            rgb_data_right = np.frombuffer(rgb_data_right, dtype=np.uint8).reshape(*rgb_data_right.shape)
+            # return the rgb data
+            # note: initially the renerer is warming up and returns empty data
+            if rgb_data_left.size != 0:
+                frame_left = rgb_data_left[:, :, :3]
+                cv2.imwrite("/home/miller/IsaacLab/frame_left.png", cv2.cvtColor(frame_left, cv2.COLOR_RGB2BGR))
+            if rgb_data_right.size != 0:
+                frame_right = rgb_data_right[:, :, :3]
+                cv2.imwrite("/home/miller/IsaacLab/frame_right.png", cv2.cvtColor(frame_right, cv2.COLOR_RGB2BGR))
+                # ffmpeg_process.stdin.write(frame_left.tobytes())
             # env stepping
             obs, _, _, _ = env.step(actions)
 
@@ -206,9 +232,6 @@ def main() -> None:
         sleep_time = dt - (time.time() - start_time)
         if args_cli.real_time and sleep_time > 0:
             time.sleep(sleep_time)
-
-    # close the simulator
-    env.close()
 
     # close the simulator
     env.close()
