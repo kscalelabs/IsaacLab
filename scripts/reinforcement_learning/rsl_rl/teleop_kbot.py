@@ -73,6 +73,7 @@ import subprocess
 import socket
 import json
 import threading
+from pathlib import Path
 
 def open_ffmpeg_stream_process():
     args = (
@@ -163,7 +164,7 @@ def main() -> None:
 
     left_cam_path = "/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera"
     right_cam_path = "/World/envs/env_0/Robot/KD_B_102B_TORSO_BTM/Camera_01"
-    resolution = env.env.cfg.viewer.resolution
+    resolution = (1280,1080)#env.env.cfg.viewer.resolution
 
     # Create render products
     render_product_left = rep.create.render_product(left_cam_path, resolution)
@@ -174,6 +175,13 @@ def main() -> None:
     rgb_annotator_right = rep.AnnotatorRegistry.get_annotator("rgb", device="cpu")
     rgb_annotator_left.attach([render_product_left])
     rgb_annotator_right.attach([render_product_right])
+    videos_dir = Path("/home/miller/IsaacLab/videos")
+    videos_dir.mkdir(parents=True, exist_ok=True)
+    left_dir = videos_dir / "left"
+    left_dir.mkdir(parents=True, exist_ok=True)
+    right_dir = videos_dir / "right"
+    right_dir.mkdir(parents=True, exist_ok=True)
+    i = 0
     while simulation_app.is_running():
         start_time = time.time()
         # run everything in inference mode
@@ -218,14 +226,14 @@ def main() -> None:
             rgb_data_right = np.frombuffer(rgb_data_right, dtype=np.uint8).reshape(*rgb_data_right.shape)
             # return the rgb data
             # note: initially the renerer is warming up and returns empty data
-            if rgb_data_left.size != 0:
+            if rgb_data_left.size != 0 and rgb_data_right.size != 0:
                 frame_left = rgb_data_left[:, :, :3]
-                cv2.imwrite("/home/miller/IsaacLab/frame_left.png", cv2.cvtColor(frame_left, cv2.COLOR_RGB2BGR))
-            if rgb_data_right.size != 0:
                 frame_right = rgb_data_right[:, :, :3]
-                cv2.imwrite("/home/miller/IsaacLab/frame_right.png", cv2.cvtColor(frame_right, cv2.COLOR_RGB2BGR))
+                cv2.imwrite(left_dir / f"{i}.png", cv2.cvtColor(frame_left, cv2.COLOR_RGB2BGR))
+                cv2.imwrite(right_dir / f"{i}.png", cv2.cvtColor(frame_right, cv2.COLOR_RGB2BGR))
                 # ffmpeg_process.stdin.write(frame_left.tobytes())
             # env stepping
+            i+=1
             obs, _, _, _ = env.step(actions)
 
         # time delay for real-time evaluation
